@@ -1,0 +1,18 @@
+:root {
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  color: #111827;
+  background: #f3f5f8;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+}
