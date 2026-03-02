@@ -9,7 +9,18 @@ export const staticRoutes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
     },
-    children: [],
+    children: [
+      {
+        path: '/ticket/detail/:id',
+        name: 'TicketDetail',
+        component: () => import('@/views/ticket/detail.vue'),
+        meta: {
+          title: '工单详情',
+          permission: 'ticket:view',
+          keepAlive: false,
+        },
+      },
+    ],
   },
   {
     path: '/login',

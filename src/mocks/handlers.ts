@@ -1,6 +1,15 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, UserProfile } from '@/types/auth'
 import type { MenuDataDto } from '@/types/menu'
+import type {
+  CreateCommentDto,
+  CreateTicketDto,
+  TicketActionDto,
+  TicketDetailDto,
+  TicketListQueryDto,
+  UpdateTicketDto,
+  UploadAttachmentDto,
+} from '@/types/ticket'
 import {
   buildMenuData,
   buildSession,
@@ -10,6 +19,16 @@ import {
   refreshSession,
   switchTenantSession,
 } from './db'
+import {
+  actionTicketByTenant,
+  createTicketByTenant,
+  createTicketCommentByTenant,
+  getTicketDetailByTenant,
+  listTicketCommentsByTenant,
+  queryTicketsByTenant,
+  updateTicketByTenant,
+  uploadTicketAttachmentByTenant,
+} from './ticketDb'
 
 const ok = <T>(data: T, message = 'ok') => {
   return HttpResponse.json({
@@ -90,5 +109,131 @@ export const handlers = [
     }
     const menuData: MenuDataDto = buildMenuData(session.username, session.tenantId)
     return ok(menuData)
+  }),
+
+  http.get('/api/tickets', async ({ request }) => {
+    await delay(280)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const url = new URL(request.url)
+    const query: TicketListQueryDto = {
+      page: Number(url.searchParams.get('page') || 1),
+      pageSize: Number(url.searchParams.get('pageSize') || 10),
+      status: (url.searchParams.get('status') || undefined) as TicketListQueryDto['status'],
+      priority: (url.searchParams.get('priority') || undefined) as TicketListQueryDto['priority'],
+      keyword: url.searchParams.get('keyword') || undefined,
+      startDate: url.searchParams.get('startDate') || undefined,
+      endDate: url.searchParams.get('endDate') || undefined,
+    }
+    return ok(queryTicketsByTenant(session.tenantId, query))
+  }),
+
+  http.get('/api/tickets/:id', async ({ request, params }) => {
+    await delay(220)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const ticket = getTicketDetailByTenant(session.tenantId, String(params.id))
+    if (!ticket) {
+      return fail(404, '工单不存在')
+    }
+    return ok<TicketDetailDto>(ticket)
+  }),
+
+  http.post('/api/tickets', async ({ request }) => {
+    await delay(260)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as CreateTicketDto
+    if (!payload.title || !payload.description) {
+      return fail(400, '标题与描述为必填项')
+    }
+    const created = createTicketByTenant(session.tenantId, session.username, payload)
+    return ok(created, '工单创建成功')
+  }),
+
+  http.put('/api/tickets/:id', async ({ request, params }) => {
+    await delay(240)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as UpdateTicketDto
+    const updated = updateTicketByTenant(session.tenantId, String(params.id), session.username, payload)
+    if (!updated) {
+      return fail(404, '工单不存在')
+    }
+    return ok(updated, '工单更新成功')
+  }),
+
+  http.post('/api/tickets/:id/actions', async ({ request, params }) => {
+    await delay(220)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as TicketActionDto
+    const updated = actionTicketByTenant(session.tenantId, String(params.id), session.username, payload)
+    if (!updated) {
+      return fail(404, '工单不存在')
+    }
+    return ok(updated, '工单流转成功')
+  }),
+
+  http.get('/api/tickets/:id/comments', async ({ request, params }) => {
+    await delay(160)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const comments = listTicketCommentsByTenant(session.tenantId, String(params.id))
+    if (!comments) {
+      return fail(404, '工单不存在')
+    }
+    return ok(comments)
+  }),
+
+  http.post('/api/tickets/:id/comments', async ({ request, params }) => {
+    await delay(180)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as CreateCommentDto
+    if (!payload.content?.trim()) {
+      return fail(400, '评论内容不能为空')
+    }
+    const created = createTicketCommentByTenant(
+      session.tenantId,
+      String(params.id),
+      session.username,
+      payload
+    )
+    if (!created) {
+      return fail(404, '工单不存在')
+    }
+    return ok(created, '评论创建成功')
+  }),
+
+  http.post('/api/tickets/:id/attachments', async ({ request, params }) => {
+    await delay(240)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as UploadAttachmentDto
+    if (!payload.filename) {
+      return fail(400, '附件名称不能为空')
+    }
+    const attachment = uploadTicketAttachmentByTenant(session.tenantId, String(params.id), payload)
+    if (!attachment) {
+      return fail(404, '工单不存在')
+    }
+    return ok(attachment, '附件上传成功')
   }),
 ]

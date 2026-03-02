@@ -6,6 +6,7 @@ type RouteComponentLoader = () => Promise<unknown>
 const routeComponentMap: Record<string, RouteComponentLoader> = {
   DashboardView: () => import('@/views/dashboard/index.vue'),
   TicketListView: () => import('@/views/ticket/list.vue'),
+  TicketDetailView: () => import('@/views/ticket/detail.vue'),
   AssetListView: () => import('@/views/asset/list.vue'),
   KbListView: () => import('@/views/kb/list.vue'),
 }

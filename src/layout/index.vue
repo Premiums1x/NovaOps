@@ -67,7 +67,13 @@ const getParentPaths = (
 }
 
 const menuItems = computed(() => renderMenuItems(permissionStore.menus))
-const selectedKeys = computed(() => [route.path])
+const selectedMenuPath = computed(() => {
+  if (route.path.startsWith('/ticket/detail')) {
+    return '/ticket/list'
+  }
+  return route.path
+})
+const selectedKeys = computed(() => [selectedMenuPath.value])
 const tabs = computed(() => appStore.tabs)
 const activeTabPath = computed(() => appStore.activeTabPath)
 const breadcrumbItems = computed(() => {
@@ -86,7 +92,7 @@ watch(
   () => route.fullPath,
   () => {
     appStore.addTabByRoute(route)
-    openKeys.value = getParentPaths(route.path, permissionStore.menus)
+    openKeys.value = getParentPaths(selectedMenuPath.value, permissionStore.menus)
   },
   { immediate: true }
 )

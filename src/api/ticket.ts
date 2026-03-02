@@ -1,0 +1,46 @@
+import request from '@/utils/request'
+import type { PageResult } from '@/types/api'
+import type {
+  CreateCommentDto,
+  CreateTicketDto,
+  TicketActionDto,
+  TicketAttachmentDto,
+  TicketCommentDto,
+  TicketDetailDto,
+  TicketListItemDto,
+  TicketListQueryDto,
+  UpdateTicketDto,
+  UploadAttachmentDto,
+} from '@/types/ticket'
+
+export const getTicketListApi = (params: TicketListQueryDto) => {
+  return request.get<PageResult<TicketListItemDto>>('/tickets', { params })
+}
+
+export const getTicketDetailApi = (id: string) => {
+  return request.get<TicketDetailDto>(`/tickets/${id}`)
+}
+
+export const createTicketApi = (payload: CreateTicketDto) => {
+  return request.post<TicketDetailDto, CreateTicketDto>('/tickets', payload)
+}
+
+export const updateTicketApi = (id: string, payload: UpdateTicketDto) => {
+  return request.put<TicketDetailDto, UpdateTicketDto>(`/tickets/${id}`, payload)
+}
+
+export const ticketActionApi = (id: string, payload: TicketActionDto) => {
+  return request.post<TicketDetailDto, TicketActionDto>(`/tickets/${id}/actions`, payload)
+}
+
+export const getTicketCommentsApi = (id: string) => {
+  return request.get<TicketCommentDto[]>(`/tickets/${id}/comments`)
+}
+
+export const createTicketCommentApi = (id: string, payload: CreateCommentDto) => {
+  return request.post<TicketCommentDto, CreateCommentDto>(`/tickets/${id}/comments`, payload)
+}
+
+export const uploadTicketAttachmentApi = (id: string, payload: UploadAttachmentDto) => {
+  return request.post<TicketAttachmentDto, UploadAttachmentDto>(`/tickets/${id}/attachments`, payload)
+}
