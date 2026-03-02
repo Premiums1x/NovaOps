@@ -1,15 +1,26 @@
 import type { Directive } from 'vue'
 import { pinia } from '@/store'
-import { useAuthStore } from '@/store/auth'
+import { usePermissionStore } from '@/store/permission'
 
 export const permissionDirective: Directive<HTMLElement, string> = {
   mounted(el, binding) {
-    const authStore = useAuthStore(pinia)
+    const permissionStore = usePermissionStore(pinia)
     const requiredCode = binding.value
     if (!requiredCode) {
       return
     }
-    const hasPermission = authStore.permissions.includes(requiredCode)
+    const hasPermission = permissionStore.hasPermission(requiredCode)
+    if (!hasPermission) {
+      el.remove()
+    }
+  },
+  updated(el, binding) {
+    const permissionStore = usePermissionStore(pinia)
+    const requiredCode = binding.value
+    if (!requiredCode) {
+      return
+    }
+    const hasPermission = permissionStore.hasPermission(requiredCode)
     if (!hasPermission) {
       el.remove()
     }

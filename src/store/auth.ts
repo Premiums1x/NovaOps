@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { loginApi, meApi, refreshTokenApi } from '@/api/auth'
+import { loginApi, meApi, refreshTokenApi, switchTenantApi } from '@/api/auth'
 import type { LoginRequestDto, UserProfile } from '@/types/auth'
 import { clearTokens, setTokens as setTokenCache } from '@/utils/request/token'
 
@@ -52,6 +52,12 @@ export const useAuthStore = defineStore('auth', {
       this.user = data
       this.tenantId = data.tenantId
       return data
+    },
+    async switchTenant(tenantId: string) {
+      const data = await switchTenantApi(tenantId)
+      this.tenantId = data.tenantId
+      this.setTokens(data.accessToken, data.refreshToken)
+      await this.me()
     },
     logout() {
       this.clearAuth()

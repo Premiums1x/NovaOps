@@ -2,6 +2,10 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/store/auth'
 
+defineOptions({
+  name: 'Dashboard',
+})
+
 const authStore = useAuthStore()
 
 const greeting = computed(() => {
@@ -23,7 +27,7 @@ const greeting = computed(() => {
 
 <style scoped>
 .dashboard-page {
-  min-height: 100vh;
-  padding: 24px;
+  min-height: 420px;
+  padding: 16px;
 }
 </style>

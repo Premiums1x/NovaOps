@@ -1,11 +1,14 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, UserProfile } from '@/types/auth'
+import type { MenuDataDto } from '@/types/menu'
 import {
+  buildMenuData,
   buildSession,
   buildUserProfile,
   getSessionFromAccessToken,
   getUser,
   refreshSession,
+  switchTenantSession,
 } from './db'
 
 const ok = <T>(data: T, message = 'ok') => {
@@ -40,7 +43,7 @@ export const handlers = [
     })
     const data: LoginResponseDto = {
       ...session,
-      tenantId,
+      tenantId: session.tenantId,
     }
     return ok(data, '登录成功')
   }),
@@ -55,6 +58,20 @@ export const handlers = [
     return ok<AuthTokenDto>(nextSession, '刷新成功')
   }),
 
+  http.post('/api/auth/switch-tenant', async ({ request }) => {
+    await delay(220)
+    const payload = (await request.json()) as { tenantId: string }
+    const nextSession = switchTenantSession(request.headers.get('Authorization'), payload.tenantId)
+    if (!nextSession) {
+      return fail(401, 'token 无效，无法切换租户')
+    }
+    const data: LoginResponseDto = {
+      ...nextSession,
+      tenantId: nextSession.tenantId,
+    }
+    return ok(data, '租户切换成功')
+  }),
+
   http.get('/api/auth/me', async ({ request }) => {
     await delay(200)
     const session = getSessionFromAccessToken(request.headers.get('Authorization'))
@@ -63,5 +80,15 @@ export const handlers = [
     }
     const profile: UserProfile = buildUserProfile(session.username, session.tenantId)
     return ok(profile)
+  }),
+
+  http.get('/api/auth/menu', async ({ request }) => {
+    await delay(220)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const menuData: MenuDataDto = buildMenuData(session.username, session.tenantId)
+    return ok(menuData)
   }),
 ]
