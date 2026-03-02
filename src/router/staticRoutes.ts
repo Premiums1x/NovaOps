@@ -41,6 +41,10 @@ export const staticRoutes: RouteRecordRaw[] = [
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
-    redirect: '/404',
+    component: () => import('@/views/404/index.vue'),
+    meta: {
+      title: '404',
+      public: true,
+    },
   },
 ]
