@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { message } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
+import { getAssetBatchApi } from '@/api/asset'
 import {
   createTicketCommentApi,
   getTicketCommentsApi,
@@ -10,6 +11,7 @@ import {
   ticketActionApi,
   uploadTicketAttachmentApi,
 } from '@/api/ticket'
+import type { AssetSimpleDto } from '@/types/asset'
 import type { TicketActionType, TicketCommentDto, TicketDetailDto, TicketStatus } from '@/types/ticket'
 
 defineOptions({
@@ -23,6 +25,7 @@ const actionLoading = ref(false)
 const commentLoading = ref(false)
 const detail = ref<TicketDetailDto | null>(null)
 const comments = ref<TicketCommentDto[]>([])
+const relatedAssets = ref<AssetSimpleDto[]>([])
 const newComment = ref('')
 
 const actionForm = reactive({
@@ -58,6 +61,11 @@ const loadTicket = async () => {
   try {
     const data = await getTicketDetailApi(ticketId.value)
     detail.value = data
+    if (data.assetIds.length) {
+      relatedAssets.value = await getAssetBatchApi(data.assetIds)
+    } else {
+      relatedAssets.value = []
+    }
   } finally {
     loading.value = false
   }
@@ -213,7 +221,18 @@ onMounted(() => {
           {{ detail?.updatedAt ? dayjs(detail.updatedAt).format('YYYY-MM-DD HH:mm:ss') : '-' }}
         </a-descriptions-item>
         <a-descriptions-item label="关联资产">
-          {{ detail?.assetIds?.length ? detail.assetIds.join(', ') : '-' }}
+          <a-space wrap>
+            <a-tag
+              v-for="asset in relatedAssets"
+              :key="asset.id"
+              color="blue"
+              class="asset-tag"
+              @click="router.push(`/asset/detail/${asset.id}`)"
+            >
+              {{ asset.id }} / {{ asset.name }}
+            </a-tag>
+            <span v-if="!relatedAssets.length">-</span>
+          </a-space>
         </a-descriptions-item>
         <a-descriptions-item label="描述" :span="2">{{ detail?.description }}</a-descriptions-item>
       </a-descriptions>
@@ -327,5 +346,9 @@ onMounted(() => {
 .timeline-time {
   color: #64748b;
   font-size: 12px;
+}
+
+.asset-tag {
+  cursor: pointer;
 }
 </style>

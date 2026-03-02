@@ -2,6 +2,13 @@ import { delay, http, HttpResponse } from 'msw'
 import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, UserProfile } from '@/types/auth'
 import type { MenuDataDto } from '@/types/menu'
 import type {
+  AssetActionDto,
+  AssetDetailDto,
+  AssetListQueryDto,
+  CreateAssetDto,
+  UpdateAssetDto,
+} from '@/types/asset'
+import type {
   CreateCommentDto,
   CreateTicketDto,
   TicketActionDto,
@@ -20,10 +27,19 @@ import {
   switchTenantSession,
 } from './db'
 import {
+  actionAssetByTenant,
+  createAssetByTenant,
+  getAssetDetailByTenant,
+  getAssetsByIdsByTenant,
+  queryAssetsByTenant,
+  updateAssetByTenant,
+} from './assetDb'
+import {
   actionTicketByTenant,
   createTicketByTenant,
   createTicketCommentByTenant,
   getTicketDetailByTenant,
+  listRelatedTicketsByAsset,
   listTicketCommentsByTenant,
   queryTicketsByTenant,
   updateTicketByTenant,
@@ -235,5 +251,107 @@ export const handlers = [
       return fail(404, '工单不存在')
     }
     return ok(attachment, '附件上传成功')
+  }),
+
+  http.get('/api/assets', async ({ request }) => {
+    await delay(220)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const url = new URL(request.url)
+    const query: AssetListQueryDto = {
+      page: Number(url.searchParams.get('page') || 1),
+      pageSize: Number(url.searchParams.get('pageSize') || 10),
+      status: (url.searchParams.get('status') || undefined) as AssetListQueryDto['status'],
+      type: (url.searchParams.get('type') || undefined) as AssetListQueryDto['type'],
+      keyword: url.searchParams.get('keyword') || undefined,
+    }
+    return ok(queryAssetsByTenant(session.tenantId, query))
+  }),
+
+  http.get('/api/assets/batch', async ({ request }) => {
+    await delay(180)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const url = new URL(request.url)
+    const ids = (url.searchParams.get('ids') || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+    return ok(getAssetsByIdsByTenant(session.tenantId, ids))
+  }),
+
+  http.get('/api/assets/:id', async ({ request, params }) => {
+    await delay(220)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const asset = getAssetDetailByTenant(session.tenantId, String(params.id))
+    if (!asset) {
+      return fail(404, '资产不存在')
+    }
+    const detail: AssetDetailDto = {
+      ...asset,
+      relatedTickets: listRelatedTicketsByAsset(session.tenantId, asset.id),
+    }
+    return ok(detail)
+  }),
+
+  http.post('/api/assets', async ({ request }) => {
+    await delay(240)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as CreateAssetDto
+    if (!payload.name || !payload.spec) {
+      return fail(400, '资产名称与规格为必填项')
+    }
+    const asset = createAssetByTenant(session.tenantId, payload)
+    const detail: AssetDetailDto = {
+      ...asset,
+      relatedTickets: [],
+    }
+    return ok(detail, '资产入库成功')
+  }),
+
+  http.put('/api/assets/:id', async ({ request, params }) => {
+    await delay(220)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as UpdateAssetDto
+    const updated = updateAssetByTenant(session.tenantId, String(params.id), payload)
+    if (!updated) {
+      return fail(404, '资产不存在')
+    }
+    const detail: AssetDetailDto = {
+      ...updated,
+      relatedTickets: listRelatedTicketsByAsset(session.tenantId, updated.id),
+    }
+    return ok(detail, '资产更新成功')
+  }),
+
+  http.post('/api/assets/:id/actions', async ({ request, params }) => {
+    await delay(200)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as AssetActionDto
+    const updated = actionAssetByTenant(session.tenantId, String(params.id), session.username, payload)
+    if (!updated) {
+      return fail(404, '资产不存在')
+    }
+    const detail: AssetDetailDto = {
+      ...updated,
+      relatedTickets: listRelatedTicketsByAsset(session.tenantId, updated.id),
+    }
+    return ok(detail, '资产状态更新成功')
   }),
 ]

@@ -15,6 +15,7 @@ import type {
   UpdateTicketDto,
   UploadAttachmentDto,
 } from '@/types/ticket'
+import type { RelatedTicketDto } from '@/types/asset'
 
 type TenantId = 'tenant-a' | 'tenant-b'
 
@@ -360,4 +361,19 @@ export const uploadTicketAttachmentByTenant = (
   ticket.attachments.unshift(attachment)
   ticket.updatedAt = dayjs().toISOString()
   return clone(attachment)
+}
+
+export const listRelatedTicketsByAsset = (tenantId: string, assetId: string): RelatedTicketDto[] => {
+  const related = tickets
+    .filter((ticket) => ticket.tenantId === tenantId && ticket.assetIds.includes(assetId))
+    .sort((a, b) => dayjs(b.updatedAt).valueOf() - dayjs(a.updatedAt).valueOf())
+    .slice(0, 8)
+    .map((ticket) => ({
+      id: ticket.id,
+      title: ticket.title,
+      status: ticket.status,
+      priority: ticket.priority,
+      assignee: ticket.assignee,
+    }))
+  return clone(related)
 }

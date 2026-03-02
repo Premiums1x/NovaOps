@@ -20,6 +20,16 @@ export const staticRoutes: RouteRecordRaw[] = [
           keepAlive: false,
         },
       },
+      {
+        path: '/asset/detail/:id',
+        name: 'AssetDetail',
+        component: () => import('@/views/asset/detail.vue'),
+        meta: {
+          title: '资产详情',
+          permission: 'asset:view',
+          keepAlive: false,
+        },
+      },
     ],
   },
   {
