@@ -18,6 +18,7 @@ import type {
   UploadAttachmentDto,
 } from '@/types/ticket'
 import type { DashboardMetricsQueryDto } from '@/types/dashboard'
+import type { KbListQueryDto, SaveKbDto } from '@/types/kb'
 import {
   buildMenuData,
   buildSession,
@@ -30,6 +31,12 @@ import {
 import {
   buildDashboardMetrics,
 } from './dashboardDb'
+import {
+  getKbDetailByTenant,
+  getKbVersionsByTenant,
+  queryKbListByTenant,
+  saveKbByTenant,
+} from './kbDb'
 import {
   actionAssetByTenant,
   createAssetByTenant,
@@ -371,5 +378,60 @@ export const handlers = [
       endDate: url.searchParams.get('endDate') || undefined,
     }
     return ok(buildDashboardMetrics(session.tenantId, query.startDate, query.endDate))
+  }),
+
+  http.get('/api/kb', async ({ request }) => {
+    await delay(220)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const url = new URL(request.url)
+    const query: KbListQueryDto = {
+      page: Number(url.searchParams.get('page') || 1),
+      pageSize: Number(url.searchParams.get('pageSize') || 10),
+      keyword: url.searchParams.get('keyword') || undefined,
+      tag: url.searchParams.get('tag') || undefined,
+    }
+    return ok(queryKbListByTenant(session.tenantId, query))
+  }),
+
+  http.get('/api/kb/:id/versions', async ({ request, params }) => {
+    await delay(200)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const versions = getKbVersionsByTenant(session.tenantId, String(params.id))
+    if (!versions) {
+      return fail(404, '文章不存在')
+    }
+    return ok(versions)
+  }),
+
+  http.get('/api/kb/:id', async ({ request, params }) => {
+    await delay(180)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const detail = getKbDetailByTenant(session.tenantId, String(params.id))
+    if (!detail) {
+      return fail(404, '文章不存在')
+    }
+    return ok(detail)
+  }),
+
+  http.post('/api/kb/save', async ({ request }) => {
+    await delay(240)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const payload = (await request.json()) as SaveKbDto
+    if (!payload.title || !payload.content) {
+      return fail(400, '标题和正文不能为空')
+    }
+    return ok(saveKbByTenant(session.tenantId, session.username, payload), '保存成功')
   }),
 ]

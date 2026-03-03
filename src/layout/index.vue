@@ -74,6 +74,9 @@ const selectedMenuPath = computed(() => {
   if (route.path.startsWith('/asset/detail')) {
     return '/asset/list'
   }
+  if (route.path.startsWith('/kb/edit')) {
+    return '/kb/list'
+  }
   return route.path
 })
 const selectedKeys = computed(() => [selectedMenuPath.value])

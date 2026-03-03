@@ -64,6 +64,7 @@ const permissionMap: Record<Username, Record<TenantId, string[]>> = {
       'asset:claim',
       'asset:scrap',
       'kb:view',
+      'kb:edit',
     ],
     'tenant-b': [
       'dashboard:view',
@@ -78,6 +79,7 @@ const permissionMap: Record<Username, Record<TenantId, string[]>> = {
       'asset:edit',
       'asset:claim',
       'asset:scrap',
+      'kb:edit',
     ],
   },
   staff: {
@@ -90,8 +92,9 @@ const permissionMap: Record<Username, Record<TenantId, string[]>> = {
       'asset:view',
       'asset:claim',
       'kb:view',
+      'kb:edit',
     ],
-    'tenant-b': ['dashboard:view', 'ticket:view', 'ticket:create', 'ticket:comment', 'asset:view'],
+    'tenant-b': ['dashboard:view', 'ticket:view', 'ticket:create', 'ticket:comment', 'asset:view', 'kb:view', 'kb:edit'],
   },
   guest: {
     'tenant-a': ['dashboard:view'],

@@ -30,6 +30,16 @@ export const staticRoutes: RouteRecordRaw[] = [
           keepAlive: false,
         },
       },
+      {
+        path: '/kb/edit/:id?',
+        name: 'KbEdit',
+        component: () => import('@/views/kb/edit.vue'),
+        meta: {
+          title: '知识库编辑',
+          permission: 'kb:view',
+          keepAlive: false,
+        },
+      },
     ],
   },
   {
