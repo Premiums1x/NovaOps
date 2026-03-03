@@ -1,10 +1,10 @@
 import { createApp } from 'vue'
-import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
 import '@/styles/index.css'
 import App from './App.vue'
 import router from '@/router'
 import { pinia } from '@/store'
+import { setupAntd } from '@/plugins/antd'
 import { permissionDirective } from '@/directives/permission'
 import Permission from '@/components/Permission.vue'
 
@@ -19,7 +19,7 @@ const enableMock = async () => {
 const bootstrap = async () => {
   await enableMock()
   const app = createApp(App)
-  app.use(Antd)
+  setupAntd(app)
   app.use(pinia)
   app.use(router)
   app.directive('permission', permissionDirective)
