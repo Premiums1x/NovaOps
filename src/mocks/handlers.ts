@@ -17,6 +17,7 @@ import type {
   UpdateTicketDto,
   UploadAttachmentDto,
 } from '@/types/ticket'
+import type { DashboardMetricsQueryDto } from '@/types/dashboard'
 import {
   buildMenuData,
   buildSession,
@@ -26,6 +27,9 @@ import {
   refreshSession,
   switchTenantSession,
 } from './db'
+import {
+  buildDashboardMetrics,
+} from './dashboardDb'
 import {
   actionAssetByTenant,
   createAssetByTenant,
@@ -353,5 +357,19 @@ export const handlers = [
       relatedTickets: listRelatedTicketsByAsset(session.tenantId, updated.id),
     }
     return ok(detail, '资产状态更新成功')
+  }),
+
+  http.get('/api/dashboard/metrics', async ({ request }) => {
+    await delay(220)
+    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    if (!session) {
+      return fail(401, 'token 无效')
+    }
+    const url = new URL(request.url)
+    const query: DashboardMetricsQueryDto = {
+      startDate: url.searchParams.get('startDate') || undefined,
+      endDate: url.searchParams.get('endDate') || undefined,
+    }
+    return ok(buildDashboardMetrics(session.tenantId, query.startDate, query.endDate))
   }),
 ]
