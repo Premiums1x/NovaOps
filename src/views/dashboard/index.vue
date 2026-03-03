@@ -2,8 +2,20 @@
 import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
-import * as echarts from 'echarts'
-import type { ECharts, EChartsCoreOption } from 'echarts'
+import { BarChart, LineChart, PieChart } from 'echarts/charts'
+import {
+  GridComponent,
+  LegendComponent,
+  TitleComponent,
+  TooltipComponent,
+  type GridComponentOption,
+  type LegendComponentOption,
+  type TitleComponentOption,
+  type TooltipComponentOption,
+} from 'echarts/components'
+import { init, use, type ComposeOption, type ECharts } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import type { BarSeriesOption, LineSeriesOption, PieSeriesOption } from 'echarts/charts'
 import { getDashboardMetricsApi } from '@/api/dashboard'
 import { useAuthStore } from '@/store/auth'
 import type { DashboardMetricsDto } from '@/types/dashboard'
@@ -11,6 +23,27 @@ import type { DashboardMetricsDto } from '@/types/dashboard'
 defineOptions({
   name: 'Dashboard',
 })
+
+use([
+  CanvasRenderer,
+  GridComponent,
+  LegendComponent,
+  TitleComponent,
+  TooltipComponent,
+  LineChart,
+  PieChart,
+  BarChart,
+])
+
+type ECOption = ComposeOption<
+  | TitleComponentOption
+  | TooltipComponentOption
+  | GridComponentOption
+  | LegendComponentOption
+  | LineSeriesOption
+  | PieSeriesOption
+  | BarSeriesOption
+>
 
 const authStore = useAuthStore()
 const loading = ref(false)
@@ -34,7 +67,7 @@ const applyQuickRange = (days: number) => {
   rangeValue.value = [dayjs().subtract(days - 1, 'day').startOf('day'), dayjs().endOf('day')]
 }
 
-const createTrendOption = (data: DashboardMetricsDto): EChartsCoreOption => ({
+const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
   tooltip: { trigger: 'axis' },
   legend: { data: ['新增工单', '完成工单'] },
   grid: { left: 40, right: 20, top: 30, bottom: 24 },
@@ -67,7 +100,7 @@ const createTrendOption = (data: DashboardMetricsDto): EChartsCoreOption => ({
   ],
 })
 
-const createPieOption = (data: DashboardMetricsDto): EChartsCoreOption => ({
+const createPieOption = (data: DashboardMetricsDto): ECOption => ({
   tooltip: { trigger: 'item' },
   legend: {
     orient: 'vertical',
@@ -85,7 +118,7 @@ const createPieOption = (data: DashboardMetricsDto): EChartsCoreOption => ({
   ],
 })
 
-const createBarOption = (data: DashboardMetricsDto): EChartsCoreOption => ({
+const createBarOption = (data: DashboardMetricsDto): ECOption => ({
   tooltip: { trigger: 'axis' },
   grid: { left: 50, right: 20, top: 24, bottom: 24 },
   xAxis: {
@@ -132,13 +165,13 @@ const renderCharts = () => {
 const initCharts = async () => {
   await nextTick()
   if (!trendChart.value && trendRef.value) {
-    trendChart.value = echarts.init(trendRef.value)
+    trendChart.value = init(trendRef.value)
   }
   if (!pieChart.value && pieRef.value) {
-    pieChart.value = echarts.init(pieRef.value)
+    pieChart.value = init(pieRef.value)
   }
   if (!barChart.value && barRef.value) {
-    barChart.value = echarts.init(barRef.value)
+    barChart.value = init(barRef.value)
   }
   renderCharts()
 }

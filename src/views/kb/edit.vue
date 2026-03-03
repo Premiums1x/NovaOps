@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { message } from 'ant-design-vue'
-import { MdEditor, MdPreview } from 'md-editor-v3'
-import 'md-editor-v3/lib/style.css'
 import { useRoute, useRouter } from 'vue-router'
 import { getKbDetailApi, getKbVersionsApi, saveKbApi } from '@/api/kb'
 import { usePermissionStore } from '@/store/permission'
@@ -16,9 +14,12 @@ defineOptions({
 const route = useRoute()
 const router = useRouter()
 const permissionStore = usePermissionStore()
+const AsyncMdEditor = defineAsyncComponent(() => import('@/components/markdown/MdEditorAsync.vue'))
+const AsyncMdPreview = defineAsyncComponent(() => import('@/components/markdown/MdPreviewAsync.vue'))
 const loading = ref(false)
 const saveLoading = ref(false)
 const versions = ref<KbVersionDto[]>([])
+const editorVisible = ref(false)
 
 const form = reactive({
   title: '',
@@ -80,6 +81,13 @@ const save = async () => {
   }
 }
 
+const toggleEditorVisible = () => {
+  if (!canEdit.value) {
+    return
+  }
+  editorVisible.value = !editorVisible.value
+}
+
 watch(
   () => route.params.id,
   () => {
@@ -87,12 +95,14 @@ watch(
       form.title = ''
       form.tags = []
       form.content = '# 新建知识文档\n\n请开始编写内容...'
+      editorVisible.value = canEdit.value
     }
     void loadDetail()
   }
 )
 
 onMounted(() => {
+  editorVisible.value = canEdit.value && !articleId.value
   void loadDetail()
 })
 </script>
@@ -108,6 +118,9 @@ onMounted(() => {
       </template>
       <template #extra>
         <a-space>
+          <a-button :disabled="!canEdit" @click="toggleEditorVisible">
+            {{ editorVisible ? '仅预览' : '进入编辑' }}
+          </a-button>
           <a-button @click="router.push('/kb/list')">取消</a-button>
           <a-button type="primary" :loading="saveLoading" :disabled="!canEdit" @click="save">保存</a-button>
         </a-space>
@@ -128,25 +141,30 @@ onMounted(() => {
         </a-form-item>
       </a-form>
 
-      <a-row :gutter="12">
+      <a-row v-if="editorVisible" :gutter="12">
         <a-col :span="14">
           <a-card title="Markdown 编辑区" size="small">
-            <MdEditor
+            <AsyncMdEditor
               v-model="form.content"
               :preview="false"
               :read-only="!canEdit"
-              :style="{ minHeight: '420px' }"
+              min-height="420px"
             />
           </a-card>
         </a-col>
         <a-col :span="10">
           <a-card title="实时预览" size="small">
             <div class="preview-wrap">
-              <MdPreview :editor-id="previewId" :model-value="form.content" />
+              <AsyncMdPreview :editor-id="previewId" :model-value="form.content" />
             </div>
           </a-card>
         </a-col>
       </a-row>
+      <a-card v-else title="内容预览" size="small">
+        <div class="preview-wrap full-preview">
+          <AsyncMdPreview :editor-id="previewId" :model-value="form.content" />
+        </div>
+      </a-card>
     </a-card>
 
     <a-card title="版本历史" :bordered="false">
@@ -175,6 +193,10 @@ onMounted(() => {
   min-height: 420px;
   max-height: 420px;
   overflow: auto;
+}
+
+.full-preview {
+  max-height: 620px;
 }
 
 .version-title {

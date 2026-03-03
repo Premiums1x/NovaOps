@@ -10,4 +10,21 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('echarts')) {
+            return 'echarts'
+          }
+          if (id.includes('ant-design-vue') || id.includes('@ant-design')) {
+            return 'antdv'
+          }
+          if (id.includes('axios') || id.includes('pinia') || id.includes('vue-router')) {
+            return 'core-vendors'
+          }
+        },
+      },
+    },
+  },
 })
