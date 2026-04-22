@@ -249,6 +249,36 @@ const normalizeTenantId = (tenantId: string) => {
   return tenantList.some((item) => item.id === tenantId) ? (tenantId as TenantId) : 'tenant-a'
 }
 
+const decodeBase64Url = (value: string) => {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  return atob(padded)
+}
+
+const parseJwtSession = (token: string): SessionPayload | null => {
+  const parts = token.split('.')
+  if (parts.length !== 3) {
+    return null
+  }
+
+  try {
+    const payload = JSON.parse(decodeBase64Url(parts[1] || '')) as {
+      username?: string
+      tenantId?: string
+    }
+    const username = payload.username as Username | undefined
+    if (!username || !users[username]) {
+      return null
+    }
+    return {
+      username,
+      tenantId: normalizeTenantId(payload.tenantId || 'tenant-a'),
+    }
+  } catch {
+    return null
+  }
+}
+
 const cloneMenu = (menus: MenuItemDto[]): MenuItemDto[] => {
   return menus.map((item) => ({
     ...item,
@@ -315,7 +345,11 @@ export const getSessionFromAccessToken = (authorization: string | null) => {
     return null
   }
   const token = authorization.replace('Bearer ', '').trim()
-  return accessTokenTable.get(token) || null
+  const mockSession = accessTokenTable.get(token)
+  if (mockSession) {
+    return mockSession
+  }
+  return parseJwtSession(token)
 }
 
 export const buildUserProfile = (username: Username, tenantId: string): UserProfile => {

@@ -306,7 +306,7 @@ onMounted(() => {
       <a-col :span="12">
         <a-card title="附件" :bordered="false">
           <a-upload :show-upload-list="false" :custom-request="handleUpload">
-            <a-button type="dashed">上传附件（Mock）</a-button>
+            <a-button type="dashed">上传附件</a-button>
           </a-upload>
           <a-list :data-source="detail?.attachments || []" size="small" class="mt12">
             <template #renderItem="{ item }">

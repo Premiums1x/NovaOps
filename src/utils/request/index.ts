@@ -65,14 +65,44 @@ const clearControllerByConfig = (config: RequestConfig) => {
   }
 }
 
+const parseJwtClaims = (token: string) => {
+  const parts = token.split('.')
+  if (parts.length !== 3) {
+    return null
+  }
+
+  try {
+    const payload = parts[1] || ''
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return JSON.parse(window.atob(padded)) as {
+      username?: string
+      tenantId?: string
+    }
+  } catch {
+    return null
+  }
+}
+
 const setAuthorizationHeader = (config: RequestConfig, accessToken: string) => {
   if (config.headers instanceof AxiosHeaders) {
     config.headers.set('Authorization', `Bearer ${accessToken}`)
+    const claims = parseJwtClaims(accessToken)
+    if (claims?.tenantId) {
+      config.headers.set('X-NovaOps-Tenant-Id', claims.tenantId)
+    }
+    if (claims?.username) {
+      config.headers.set('X-NovaOps-Username', claims.username)
+    }
     return
   }
+
+  const claims = parseJwtClaims(accessToken)
   config.headers = {
     ...config.headers,
     Authorization: `Bearer ${accessToken}`,
+    ...(claims?.tenantId ? { 'X-NovaOps-Tenant-Id': claims.tenantId } : {}),
+    ...(claims?.username ? { 'X-NovaOps-Username': claims.username } : {}),
   }
 }
 

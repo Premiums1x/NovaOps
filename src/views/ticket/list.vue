@@ -9,6 +9,7 @@ import { useRouter } from 'vue-router'
 import ProTable from '@/components/pro-table/index.vue'
 import {
   createTicketApi,
+  getTicketDetailApi,
   getTicketListApi,
   ticketActionApi,
   updateTicketApi,
@@ -266,14 +267,20 @@ const submitCreate = async () => {
   }
 }
 
-const openEditModal = (record: TicketListItemDto) => {
+const openEditModal = async (record: TicketListItemDto) => {
   currentRecord.value = record
-  editForm.title = record.title
-  editForm.description = record.title
-  editForm.priority = record.priority
-  editForm.assignee = record.assignee
-  editForm.assetIds = [...record.assetIds]
-  editForm.dueDate = ''
+  modalLoading.value = true
+  try {
+    const detail = await getTicketDetailApi(record.id)
+    editForm.title = detail.title
+    editForm.description = detail.description
+    editForm.priority = detail.priority
+    editForm.assignee = detail.assignee
+    editForm.assetIds = [...detail.assetIds]
+    editForm.dueDate = detail.dueDate || ''
+  } finally {
+    modalLoading.value = false
+  }
   editModalVisible.value = true
 }
 
