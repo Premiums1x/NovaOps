@@ -1,0 +1,26 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: novaops-backend
+  datasource:
+    url: ${NOVAOPS_DB_URL:jdbc:mysql://127.0.0.1:3306/novaops?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8}
+    username: ${NOVAOPS_DB_USERNAME:root}
+    password: ${NOVAOPS_DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+mybatis:
+  mapper-locations: classpath*:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  security:
+    jwt-secret: ${NOVAOPS_JWT_SECRET:change-this-secret-for-local-dev-please}
+    access-token-expire-seconds: 1800
+    refresh-token-expire-days: 7

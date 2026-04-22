@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novaops.backend.ticket.mapper.TicketMapper">
+
+  <sql id="ticketFilters">
+    where tenant_id = #{tenantId}
+    <if test="status != null and status != ''">
+      and status = #{status}
+    </if>
+    <if test="priority != null and priority != ''">
+      and priority = #{priority}
+    </if>
+    <if test="keyword != null and keyword != ''">
+      and (
+        lower(id) like concat('%', lower(#{keyword}), '%')
+        or lower(title) like concat('%', lower(#{keyword}), '%')
+        or lower(description) like concat('%', lower(#{keyword}), '%')
+      )
+    </if>
+    <if test="startDate != null">
+      and created_at <![CDATA[>=]]> #{startDate}
+    </if>
+    <if test="endDate != null">
+      and created_at <![CDATA[<=]]> #{endDate}
+    </if>
+  </sql>
+
+  <select id="countTickets" resultType="long">
+    select count(1)
+    from biz_ticket
+    <include refid="ticketFilters" />
+  </select>
+
+  <select id="queryTickets" resultType="com.novaops.backend.ticket.model.TicketRecord">
+    select id, tenant_id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at
+    from biz_ticket
+    <include refid="ticketFilters" />
+    order by updated_at desc
+    limit #{limit} offset #{offset}
+  </select>
+
+  <select id="countTicketsByTenant" resultType="long">
+    select count(1)
+    from biz_ticket
+    where tenant_id = #{tenantId}
+  </select>
+
+  <select id="findTicket" resultType="com.novaops.backend.ticket.model.TicketRecord">
+    select id, tenant_id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at
+    from biz_ticket
+    where tenant_id = #{tenantId}
+      and id = #{ticketId}
+    limit 1
+  </select>
+
+  <insert id="insertTicket" parameterType="com.novaops.backend.ticket.model.TicketRecord">
+    insert into biz_ticket (
+      id,
+      tenant_id,
+      title,
+      description,
+      status,
+      priority,
+      assignee,
+      creator,
+      due_date,
+      created_at,
+      updated_at
+    ) values (
+      #{id},
+      #{tenantId},
+      #{title},
+      #{description},
+      #{status},
+      #{priority},
+      #{assignee},
+      #{creator},
+      #{dueDate},
+      #{createdAt},
+      #{updatedAt}
+    )
+  </insert>
+
+  <update id="updateTicket" parameterType="com.novaops.backend.ticket.model.TicketRecord">
+    update biz_ticket
+    set title = #{title},
+        description = #{description},
+        status = #{status},
+        priority = #{priority},
+        assignee = #{assignee},
+        creator = #{creator},
+        due_date = #{dueDate},
+        updated_at = #{updatedAt}
+    where id = #{id}
+      and tenant_id = #{tenantId}
+  </update>
+
+  <delete id="deleteAssetRelations">
+    delete from biz_ticket_asset_rel
+    where ticket_id = #{ticketId}
+  </delete>
+
+  <insert id="insertAssetRelation">
+    insert into biz_ticket_asset_rel (ticket_id, asset_id)
+    values (#{ticketId}, #{assetId})
+  </insert>
+
+  <select id="listAssetIds" resultType="string">
+    select asset_id
+    from biz_ticket_asset_rel
+    where ticket_id = #{ticketId}
+    order by asset_id asc
+  </select>
+
+  <select id="listAssetRelationsByTicketIds" resultType="com.novaops.backend.ticket.model.TicketAssetRelationRecord">
+    select ticket_id, asset_id
+    from biz_ticket_asset_rel
+    where ticket_id in
+    <foreach collection="ticketIds" item="ticketId" open="(" separator="," close=")">
+      #{ticketId}
+    </foreach>
+    order by ticket_id asc, asset_id asc
+  </select>
+
+  <select id="listTimeline" resultType="com.novaops.backend.ticket.model.TicketTimelineRecord">
+    select id, ticket_id, action, operator, remark, from_status, to_status, created_at
+    from biz_ticket_timeline
+    where ticket_id = #{ticketId}
+    order by created_at desc, id desc
+  </select>
+
+  <insert id="insertTimeline" parameterType="com.novaops.backend.ticket.model.TicketTimelineRecord">
+    insert into biz_ticket_timeline (
+      id,
+      ticket_id,
+      action,
+      operator,
+      remark,
+      from_status,
+      to_status,
+      created_at
+    ) values (
+      #{id},
+      #{ticketId},
+      #{action},
+      #{operator},
+      #{remark},
+      #{fromStatus},
+      #{toStatus},
+      #{createdAt}
+    )
+  </insert>
+
+  <select id="listComments" resultType="com.novaops.backend.ticket.model.TicketCommentRecord">
+    select id, ticket_id, author, content, created_at
+    from biz_ticket_comment
+    where ticket_id = #{ticketId}
+    order by created_at desc, id desc
+  </select>
+
+  <insert id="insertComment" parameterType="com.novaops.backend.ticket.model.TicketCommentRecord">
+    insert into biz_ticket_comment (
+      id,
+      ticket_id,
+      author,
+      content,
+      created_at
+    ) values (
+      #{id},
+      #{ticketId},
+      #{author},
+      #{content},
+      #{createdAt}
+    )
+  </insert>
+
+  <select id="listAttachments" resultType="com.novaops.backend.ticket.model.TicketAttachmentRecord">
+    select id, ticket_id, name, url, size, created_at
+    from biz_ticket_attachment
+    where ticket_id = #{ticketId}
+    order by created_at desc, id desc
+  </select>
+
+  <insert id="insertAttachment" parameterType="com.novaops.backend.ticket.model.TicketAttachmentRecord">
+    insert into biz_ticket_attachment (
+      id,
+      ticket_id,
+      name,
+      url,
+      size,
+      created_at
+    ) values (
+      #{id},
+      #{ticketId},
+      #{name},
+      #{url},
+      #{size},
+      #{createdAt}
+    )
+  </insert>
+</mapper>

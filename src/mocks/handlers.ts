@@ -1,4 +1,4 @@
-import { delay, http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse, passthrough } from 'msw'
 import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, UserProfile } from '@/types/auth'
 import type { MenuDataDto } from '@/types/menu'
 import type {
@@ -73,8 +73,36 @@ const fail = (code: number, message: string) => {
   })
 }
 
+const mockMode = (import.meta.env.VITE_ENABLE_MOCK || 'full').toLowerCase()
+const shouldPassthroughTicketBackend = mockMode === 'partial'
+const getSession = (request: Request) => {
+  const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+  if (session) {
+    return session
+  }
+
+  const username = request.headers.get('X-NovaOps-Username')
+  const tenantId = request.headers.get('X-NovaOps-Tenant-Id')
+  if (!username || !tenantId) {
+    return null
+  }
+
+  const user = getUser(username)
+  if (!user) {
+    return null
+  }
+
+  return {
+    username: user.username,
+    tenantId,
+  }
+}
+
 export const handlers = [
   http.post('/api/auth/login', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(350)
     const payload = (await request.json()) as LoginRequestDto
     const user = getUser(payload.username)
@@ -95,6 +123,9 @@ export const handlers = [
   }),
 
   http.post('/api/auth/refresh', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(250)
     const payload = (await request.json()) as { refreshToken: string }
     const nextSession = refreshSession(payload.refreshToken)
@@ -105,6 +136,9 @@ export const handlers = [
   }),
 
   http.post('/api/auth/switch-tenant', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(220)
     const payload = (await request.json()) as { tenantId: string }
     const nextSession = switchTenantSession(request.headers.get('Authorization'), payload.tenantId)
@@ -119,8 +153,11 @@ export const handlers = [
   }),
 
   http.get('/api/auth/me', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(200)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -129,8 +166,11 @@ export const handlers = [
   }),
 
   http.get('/api/auth/menu', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(220)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -139,8 +179,11 @@ export const handlers = [
   }),
 
   http.get('/api/tickets', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(280)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -158,8 +201,11 @@ export const handlers = [
   }),
 
   http.get('/api/tickets/:id', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(220)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -171,8 +217,11 @@ export const handlers = [
   }),
 
   http.post('/api/tickets', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(260)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -185,8 +234,11 @@ export const handlers = [
   }),
 
   http.put('/api/tickets/:id', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(240)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -199,8 +251,11 @@ export const handlers = [
   }),
 
   http.post('/api/tickets/:id/actions', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(220)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -213,8 +268,11 @@ export const handlers = [
   }),
 
   http.get('/api/tickets/:id/comments', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(160)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -226,8 +284,11 @@ export const handlers = [
   }),
 
   http.post('/api/tickets/:id/comments', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(180)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -248,8 +309,11 @@ export const handlers = [
   }),
 
   http.post('/api/tickets/:id/attachments', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
     await delay(240)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -266,7 +330,7 @@ export const handlers = [
 
   http.get('/api/assets', async ({ request }) => {
     await delay(220)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -283,7 +347,7 @@ export const handlers = [
 
   http.get('/api/assets/batch', async ({ request }) => {
     await delay(180)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -297,7 +361,7 @@ export const handlers = [
 
   http.get('/api/assets/:id', async ({ request, params }) => {
     await delay(220)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -314,7 +378,7 @@ export const handlers = [
 
   http.post('/api/assets', async ({ request }) => {
     await delay(240)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -332,7 +396,7 @@ export const handlers = [
 
   http.put('/api/assets/:id', async ({ request, params }) => {
     await delay(220)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -350,7 +414,7 @@ export const handlers = [
 
   http.post('/api/assets/:id/actions', async ({ request, params }) => {
     await delay(200)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -368,7 +432,7 @@ export const handlers = [
 
   http.get('/api/dashboard/metrics', async ({ request }) => {
     await delay(220)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -382,7 +446,7 @@ export const handlers = [
 
   http.get('/api/kb', async ({ request }) => {
     await delay(220)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -398,7 +462,7 @@ export const handlers = [
 
   http.get('/api/kb/:id/versions', async ({ request, params }) => {
     await delay(200)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -411,7 +475,7 @@ export const handlers = [
 
   http.get('/api/kb/:id', async ({ request, params }) => {
     await delay(180)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }
@@ -424,7 +488,7 @@ export const handlers = [
 
   http.post('/api/kb/save', async ({ request }) => {
     await delay(240)
-    const session = getSessionFromAccessToken(request.headers.get('Authorization'))
+    const session = getSession(request)
     if (!session) {
       return fail(401, 'token 无效')
     }

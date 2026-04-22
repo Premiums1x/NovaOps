@@ -12,6 +12,10 @@ const enableMock = async () => {
   if (!import.meta.env.DEV) {
     return
   }
+  const mockMode = (import.meta.env.VITE_ENABLE_MOCK || 'full').toLowerCase()
+  if (mockMode === 'off') {
+    return
+  }
   const { worker } = await import('@/mocks/browser')
   await worker.start({ onUnhandledRequest: 'bypass' })
 }
