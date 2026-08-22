@@ -24,8 +24,10 @@ const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const permissionStore = usePermissionStore()
+// 当前展开的子菜单 key 列表
 const openKeys = ref<string[]>([])
 
+// 图标映射：后端返回的 icon 字符串 → 对应的图标组件
 const iconMap = {
   dashboard: DashboardOutlined,
   ticket: ToolOutlined,
@@ -34,18 +36,22 @@ const iconMap = {
   default: AppstoreOutlined,
 }
 
+// 把后端返回的菜单数据转换成 Ant Design 菜单组件需要的格式
 const renderMenuItems = (menus: MenuItemDto[]): MenuItem[] => {
   return menus.map((menu) => {
+    // 根据 icon 字符串取出对应图标组件，取不到则用默认图标
     const Icon = iconMap[menu.icon as keyof typeof iconMap] || iconMap.default
     return {
       key: menu.path,
       icon: () => h(Icon),
       label: menu.title,
+      // 有子菜单则递归处理
       children: menu.children?.length ? renderMenuItems(menu.children) : undefined,
     }
   })
 }
 
+// 递归查找目标路径的所有父级路径，用于自动展开子菜单
 const getParentPaths = (
   targetPath: string,
   menus: MenuItemDto[],
@@ -66,7 +72,10 @@ const getParentPaths = (
   return []
 }
 
+// 后端菜单数据转换为 a-menu 需要的格式
 const menuItems = computed(() => renderMenuItems(permissionStore.menus))
+
+// 详情页/编辑页在菜单中高亮其对应的列表页（详情页本身不在菜单里）
 const selectedMenuPath = computed(() => {
   if (route.path.startsWith('/ticket/detail')) {
     return '/ticket/list'
@@ -79,9 +88,13 @@ const selectedMenuPath = computed(() => {
   }
   return route.path
 })
-const selectedKeys = computed(() => [selectedMenuPath.value])
+const selectedKeys = computed(() => [selectedMenuPath.value])//就是把字符串转成只有一个元素的数组，满足 a-menu 的类型要求。
+
+// Tab 页签相关
 const tabs = computed(() => appStore.tabs)
 const activeTabPath = computed(() => appStore.activeTabPath)
+
+// 面包屑：从路由匹配记录中提取标题
 const breadcrumbItems = computed(() => {
   return route.matched
     .filter((item) => item.meta.title && item.name !== 'Root')
@@ -90,35 +103,49 @@ const breadcrumbItems = computed(() => {
       title: String(item.meta.title),
     }))
 })
+
+// 租户下拉选项
 const tenantOptions = computed(() =>
   (authStore.user?.tenants || []).map((item) => ({ label: item.name, value: item.id }))
 )
 
+// 路由变化时：添加 Tab 页签 + 自动展开对应子菜单
 watch(
+  //监听 route.fullPath 的变化
+  //用 () => route.fullPath 而不是直接写 route.fullPath：
+  //传的是函数，每次都会重新取值
   () => route.fullPath,
   () => {
     appStore.addTabByRoute(route)
+    //路由变化时，自动展开当前页面对应的子菜单
     openKeys.value = getParentPaths(selectedMenuPath.value, permissionStore.menus)
   },
   { immediate: true }
 )
 
+// 切换侧边栏折叠状态
 const toggleCollapse = () => {
   appStore.setCollapsed(!appStore.collapsed)
 }
 
+// 菜单点击 → 路由跳转
+// MenuProps标注事件处理函数的参数类型
+//从 MenuProps 这个类型里取出 onOpenChange 这个事件的类型
 const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
   void router.push(String(key))
 }
 
+// 子菜单展开/收起时更新 openKeys
 const handleOpenChange: MenuProps['onOpenChange'] = (keys) => {
   openKeys.value = keys as string[]
 }
 
+// Tab 切换 → 路由跳转
 const handleTabChange: TabsProps['onChange'] = (key) => {
   void router.push(String(key))
 }
 
+// Tab 关闭：从 store 移除，如果关的是当前页则跳转到另一个活跃 Tab
 const handleTabEdit: TabsProps['onEdit'] = (targetKey, action) => {
   if (action === 'remove') {
     const path = String(targetKey)
@@ -129,6 +156,7 @@ const handleTabEdit: TabsProps['onEdit'] = (targetKey, action) => {
   }
 }
 
+// 切换租户：重新登录、重新生成路由、清空 Tab 页签
 const handleTenantChange = async (tenantId: string) => {
   if (tenantId === authStore.tenantId) {
     return
@@ -140,6 +168,7 @@ const handleTenantChange = async (tenantId: string) => {
   await router.replace('/dashboard')
 }
 
+// 用户下拉操作：目前只有退出登录
 const handleUserAction = async ({ key }: { key: string }) => {
   if (key !== 'logout') {
     return

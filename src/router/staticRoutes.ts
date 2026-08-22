@@ -1,4 +1,12 @@
+//静态路由表：
+//根路由（需登录）
+//独立页面（无需登录）
+
+
+
 import type { RouteRecordRaw } from 'vue-router'
+//路由配置对象的类型
+//框架提供的类型定义，用来约束你的数据结构。
 
 export const staticRoutes: RouteRecordRaw[] = [
   {

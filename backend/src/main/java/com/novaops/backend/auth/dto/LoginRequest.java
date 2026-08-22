@@ -12,6 +12,9 @@ public class LoginRequest {
 
   private String tenantId;
 
+  @NotBlank(message = "身份不能为空")
+  private String roleId;
+
   public String getUsername() {
     return username;
   }
@@ -34,5 +37,13 @@ public class LoginRequest {
 
   public void setTenantId(String tenantId) {
     this.tenantId = tenantId;
+  }
+
+  public String getRoleId() {
+    return roleId;
+  }
+
+  public void setRoleId(String roleId) {
+    this.roleId = roleId;
   }
 }

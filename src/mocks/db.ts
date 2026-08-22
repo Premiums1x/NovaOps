@@ -1,20 +1,19 @@
-import type { TenantInfo, UserProfile } from '@/types/auth'
+import type { RoleDto, TenantInfo, UserProfile } from '@/types/auth'
 import type { MenuDataDto, MenuItemDto } from '@/types/menu'
 
-type Username = 'admin' | 'staff' | 'guest'
 type TenantId = 'tenant-a' | 'tenant-b'
 type MenuTemplateKey = 'full' | 'staff' | 'guest'
 
 interface MockUser {
   id: string
-  username: Username
+  username: string
   password: string
   displayName: string
   roles: string[]
 }
 
 interface SessionPayload {
-  username: Username
+  username: string
   tenantId: string
 }
 
@@ -23,7 +22,7 @@ const tenantList: TenantInfo[] = [
   { id: 'tenant-b', name: 'Tenant B' },
 ]
 
-const users: Record<Username, MockUser> = {
+const users: Record<string, MockUser> = {
   admin: {
     id: 'u-admin',
     username: 'admin',
@@ -47,7 +46,39 @@ const users: Record<Username, MockUser> = {
   },
 }
 
-const permissionMap: Record<Username, Record<TenantId, string[]>> = {
+// 动态注册的用户
+const dynamicUsers = new Map<string, MockUser>()
+
+let userCounter = 0
+
+export const roles: RoleDto[] = [
+  { id: 'role-admin', code: 'admin', name: '管理员' },
+  { id: 'role-staff', code: 'staff', name: '运维人员' },
+  { id: 'role-guest', code: 'guest', name: '访客' },
+]
+
+export const createDynamicUser = (username: string, roleId: string): MockUser => {
+  if (users[username]) {
+    return users[username]
+  }
+  const role = roles.find(r => r.id === roleId)
+  if (!role) {
+    throw new Error(`Role not found: ${roleId}`)
+  }
+  const roleCode = role.code
+  userCounter++
+  const user: MockUser = {
+    id: `u-dyn-${userCounter}`,
+    username,
+    password: '123456',
+    displayName: username,
+    roles: [roleCode],
+  }
+  dynamicUsers.set(username, user)
+  return user
+}
+
+const permissionMap: Record<string, Record<TenantId, string[]>> = {
   admin: {
     'tenant-a': [
       'dashboard:view',
@@ -266,8 +297,8 @@ const parseJwtSession = (token: string): SessionPayload | null => {
       username?: string
       tenantId?: string
     }
-    const username = payload.username as Username | undefined
-    if (!username || !users[username]) {
+    const username = payload.username
+    if (!username) {
       return null
     }
     return {
@@ -286,18 +317,20 @@ const cloneMenu = (menus: MenuItemDto[]): MenuItemDto[] => {
   }))
 }
 
-const resolveMenusByUser = (username: Username, tenantId: string): MenuItemDto[] => {
-  if (username === 'guest') {
+const resolveMenusByUser = (username: string, tenantId: string): MenuItemDto[] => {
+  const user = users[username] || dynamicUsers.get(username)
+  const roleCode = user?.roles?.[0]
+  if (roleCode === 'guest') {
     return cloneMenu(menuTemplates.guest)
   }
-  if (username === 'staff' || tenantId === 'tenant-b') {
+  if (roleCode === 'staff' || tenantId === 'tenant-b') {
     return cloneMenu(menuTemplates.staff)
   }
   return cloneMenu(menuTemplates.full)
 }
 
 export const getUser = (username: string) => {
-  return users[username as Username]
+  return users[username] || dynamicUsers.get(username)
 }
 
 export const buildSession = (payload: SessionPayload) => {
@@ -352,24 +385,36 @@ export const getSessionFromAccessToken = (authorization: string | null) => {
   return parseJwtSession(token)
 }
 
-export const buildUserProfile = (username: Username, tenantId: string): UserProfile => {
+// 按「用户名 → 角色码」的优先级取权限表,兜底用 admin 权限,保证一定有返回值
+const resolvePermissions = (username: string, roleCode: string, tenantId: TenantId): string[] =>
+  permissionMap[username]?.[tenantId] || permissionMap[roleCode]?.[tenantId] || permissionMap.admin?.[tenantId] || []
+
+export const buildUserProfile = (username: string, tenantId: string): UserProfile => {
   const currentTenantId = normalizeTenantId(tenantId)
-  const user = users[username]
+  const user = users[username] || dynamicUsers.get(username)
+  if (!user) {
+    throw new Error(`User not found: ${username}`)
+  }
+  const roleCode = user.roles[0] || 'admin'
+  const perms = resolvePermissions(username, roleCode, currentTenantId)
   return {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
     roles: user.roles,
-    permissions: permissionMap[username][currentTenantId],
+    permissions: perms,
     tenantId: currentTenantId,
     tenants: tenantList,
   }
 }
 
-export const buildMenuData = (username: Username, tenantId: string): MenuDataDto => {
+export const buildMenuData = (username: string, tenantId: string): MenuDataDto => {
   const currentTenantId = normalizeTenantId(tenantId)
+  const user = users[username] || dynamicUsers.get(username)
+  const roleCode = user?.roles?.[0] || 'admin'
+  const perms = resolvePermissions(username, roleCode, currentTenantId)
   return {
     menus: resolveMenusByUser(username, currentTenantId),
-    permissions: permissionMap[username][currentTenantId],
+    permissions: perms,
   }
 }

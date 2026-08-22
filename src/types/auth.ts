@@ -14,9 +14,16 @@ export interface UserProfile {
 }
 
 export interface LoginRequestDto {
-  username: 'admin' | 'staff' | 'guest'
+  username: string
   password: string
   tenantId?: string
+  roleId: string
+}
+
+export interface RoleDto {
+  id: string
+  code: string
+  name: string
 }
 
 export interface AuthTokenDto {

@@ -1,5 +1,6 @@
 package com.novaops.backend.auth.mapper;
 
+import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.model.MenuRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
 import com.novaops.backend.auth.model.TenantRecord;
@@ -32,4 +33,16 @@ public interface AuthMapper {
   );
 
   RefreshTokenRecord findRefreshToken(@Param("token") String token);
+
+  // --- 注册 / 自动创建用户 ---
+
+  void insertUser(UserRecord user);
+
+  void insertUserRole(@Param("userId") String userId, @Param("roleId") String roleId);
+
+  void insertUserTenant(@Param("userId") String userId, @Param("tenantId") String tenantId);
+
+  List<RoleResponse> listRoles();
+
+  RoleResponse findRoleById(@Param("roleId") String roleId);
 }

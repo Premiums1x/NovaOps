@@ -5,12 +5,14 @@ import com.novaops.backend.auth.dto.LoginRequest;
 import com.novaops.backend.auth.dto.LoginResponse;
 import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
+import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.service.AuthService;
 import com.novaops.backend.common.api.ApiResponse;
 import com.novaops.backend.common.security.RequestContext;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -50,5 +52,10 @@ public class AuthController {
   @GetMapping("/menu")
   public ApiResponse<MenuDataResponse> menu() {
     return ApiResponse.success(authService.menu(RequestContext.getRequired()));
+  }
+
+  @GetMapping("/roles")
+  public ApiResponse<List<RoleResponse>> roles() {
+    return ApiResponse.success(authService.listRoles());
   }
 }

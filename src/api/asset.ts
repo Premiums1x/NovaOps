@@ -10,6 +10,9 @@ import type {
   UpdateAssetDto,
 } from '@/types/asset'
 
+
+//给 /assets 这组接口再加了一层薄封装，
+// 让业务代码调用时直接 getAssetListApi(params) 就行，不用每次写 URL 和类型。
 export const getAssetListApi = (params: AssetListQueryDto) => {
   return request.get<PageResult<AssetListItemDto>>('/assets', { params })
 }

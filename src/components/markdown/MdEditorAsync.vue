@@ -2,6 +2,9 @@
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 
+// 等价于下面这两行：
+// const props = defineProps<{ modelValue: string }>()
+// const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const modelValue = defineModel<string>({
   required: true,
 })
@@ -12,6 +15,7 @@ withDefaults(
     readOnly?: boolean
     minHeight?: string
   }>(),
+  //指定默认值
   {
     preview: false,
     readOnly: false,
@@ -21,6 +25,7 @@ withDefaults(
 </script>
 
 <template>
+  <!-- 声明好的变量传给 MdEditor 组件 -->
   <MdEditor
     v-model="modelValue"
     :preview="preview"

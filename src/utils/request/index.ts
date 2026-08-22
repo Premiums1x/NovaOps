@@ -1,3 +1,4 @@
+//封装一个统一的 HTTP 请求工具
 import axios, {
   AxiosError,
   AxiosHeaders,
@@ -19,15 +20,16 @@ interface PendingRequest {
 type RequestInternalConfig = InternalAxiosRequestConfig & RequestConfig
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
-const controllers = new Map<string, AbortController>()
-const refreshQueue: PendingRequest[] = []
-let isRefreshing = false
+const controllers = new Map<string, AbortController>()//key:请求id，value:AbortController,核心能力调用abort方法去中断axios请求
+const refreshQueue: PendingRequest[] = []//初始化等待请求数组
+let isRefreshing = false//标记是否有在进行token刷新
 
 const http: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
 })
 
+//将新token同步到Pinia状态管理
 const syncStoreTokens = async (accessToken: string, refreshToken: string) => {
   const { useAuthStore } = await import('@/store/auth')
   const { pinia } = await import('@/store')
@@ -35,6 +37,7 @@ const syncStoreTokens = async (accessToken: string, refreshToken: string) => {
   authStore.setTokens(accessToken, refreshToken)
 }
 
+// 清除认证状态，把 store 里存的 token、用户信息等全部清掉。
 const clearAuthState = async () => {
   const { useAuthStore } = await import('@/store/auth')
   const { pinia } = await import('@/store')
@@ -42,6 +45,10 @@ const clearAuthState = async () => {
   authStore.clearAuth()
 }
 
+//同时处理成功和失败两种结果：
+// 失败时的调用：flushRefreshQueue(error) — 只传 error，token 用默认值 ''
+// 成功：flushRefreshQueue(null, tokens.accessToken) — 传 null 表示没错误，再传新 token
+//刷新 token 之后，统一处理队列里的等待请求
 const flushRefreshQueue = (error: unknown, token = '') => {
   refreshQueue.forEach((request) => {
     if (error) {
@@ -53,18 +60,23 @@ const flushRefreshQueue = (error: unknown, token = '') => {
   refreshQueue.length = 0
 }
 
+//拿到请求详细配置信息
 const getRequestId = (config: RequestConfig) => {
   const method = (config.method || 'get').toUpperCase()
   const url = config.url || ''
   return config.requestId || `${method}:${url}:${Date.now()}`
 }
 
+//请求完成后，无论失败/成功，都不再需要controller去取消请求
 const clearControllerByConfig = (config: RequestConfig) => {
   if (config.requestId) {
     controllers.delete(config.requestId)
   }
 }
 
+//解析 JWT token，从中提取信息
+// JWT token 的格式是 header.payload.signature，三段用 . 分隔。
+// 这个函数解析的是中间那段 payload，里面存着用户信息。
 const parseJwtClaims = (token: string) => {
   const parts = token.split('.')
   if (parts.length !== 3) {
@@ -74,8 +86,11 @@ const parseJwtClaims = (token: string) => {
   try {
     const payload = parts[1] || ''
     const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    //JWT 用的是 Base64URL 编码，用 - 和 _ 代替了 + 和 /，需要换回来，再补齐 = 号
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
     return JSON.parse(window.atob(padded)) as {
+      //atob 解码 + JSON.parse 解析
+      //  Base64 字符串还原成 JSON 对象
       username?: string
       tenantId?: string
     }
@@ -85,9 +100,15 @@ const parseJwtClaims = (token: string) => {
 }
 
 const setAuthorizationHeader = (config: RequestConfig, accessToken: string) => {
+  //axios 内部有时把 headers 处理成 AxiosHeaders 类实例，有时还是原始对象，两种设置值的方式不同。
   if (config.headers instanceof AxiosHeaders) {
     config.headers.set('Authorization', `Bearer ${accessToken}`)
+
+    // accesstoken传进去拿到解析后的JWT信息
     const claims = parseJwtClaims(accessToken)
+    //给请求头加参数
+
+    //可选链（optional chaining），?.
     if (claims?.tenantId) {
       config.headers.set('X-NovaOps-Tenant-Id', claims.tenantId)
     }
@@ -97,10 +118,12 @@ const setAuthorizationHeader = (config: RequestConfig, accessToken: string) => {
     return
   }
 
+  // 处理 headers 是普通对象的情况，用扩展运算符 ... 合并进去
   const claims = parseJwtClaims(accessToken)
   config.headers = {
     ...config.headers,
     Authorization: `Bearer ${accessToken}`,
+    //条件性地往对象里加属性。
     ...(claims?.tenantId ? { 'X-NovaOps-Tenant-Id': claims.tenantId } : {}),
     ...(claims?.username ? { 'X-NovaOps-Username': claims.username } : {}),
   }
@@ -108,9 +131,11 @@ const setAuthorizationHeader = (config: RequestConfig, accessToken: string) => {
 
 const handleUnauthorized = async (config: RequestConfig) => {
   if (config.skipAuthRefresh || config._retry) {
-    await clearAuthState()
+    await clearAuthState()//async 函数，里面有 await import(...) 操作。必须等它做完，store 才真正清干净了
     clearTokens()
     window.location.replace('/login')
+    //这个函数是 async 的，async 函数永远返回 Promise
+    //认证失败,把这个错误抛给业务层去处理。
     return Promise.reject(new Error('Unauthorized'))
   }
 
@@ -123,6 +148,7 @@ const handleUnauthorized = async (config: RequestConfig) => {
       if (!refreshToken) {
         throw new Error('Missing refresh token')
       }
+      //data: AuthTokenDto
       const response = await axios.post<ApiResponse<AuthTokenDto>>(
         `${API_BASE_URL}/auth/refresh`,
         { refreshToken },
@@ -132,11 +158,12 @@ const handleUnauthorized = async (config: RequestConfig) => {
         throw new Error(response.data.message || 'Refresh failed')
       }
       const tokens = response.data.data
-      setTokens(tokens.accessToken, tokens.refreshToken)
+      setTokens(tokens.accessToken, tokens.refreshToken)//localStorage
       await syncStoreTokens(tokens.accessToken, tokens.refreshToken)
-      flushRefreshQueue(null, tokens.accessToken)
+      flushRefreshQueue(null, tokens.accessToken)//用新token重发请求
     } catch (error) {
-      flushRefreshQueue(error)
+      //一旦捕获到error
+      flushRefreshQueue(error)//全部拒绝请求
       await clearAuthState()
       clearTokens()
       window.location.replace('/login')
@@ -146,6 +173,8 @@ const handleUnauthorized = async (config: RequestConfig) => {
     }
   }
 
+  // Promise 暂时"卡住"，不立刻 resolve 也不 reject
+  // 把 resolve/reject 存进队列 
   return new Promise((resolve, reject) => {
     refreshQueue.push({
       resolve: (token) => {
@@ -157,24 +186,28 @@ const handleUnauthorized = async (config: RequestConfig) => {
   })
 }
 
+//请求拦截器
 const onRequest = (config: InternalAxiosRequestConfig) => {
   const requestConfig = config as RequestInternalConfig
   const accessToken = getAccessToken()
   if (accessToken) {
+    //设置授权头
     setAuthorizationHeader(requestConfig, accessToken)
   }
 
+  //给没有取消能力的请求，补上一个 AbortController
   if (!requestConfig.signal) {
     const requestId = getRequestId(requestConfig)
-    const controller = new AbortController()
+    const controller = new AbortController()// 创建取消控制器
     requestConfig.requestId = requestId
-    requestConfig.signal = controller.signal
+    requestConfig.signal = controller.signal//把 signal 赋给请求，这样 axios 就能监听取消信号
     controllers.set(requestId, controller)
   }
 
   return requestConfig
 }
 
+//响应拦截器，拦截成功的响应
 const onResponse = async (response: AxiosResponse<ApiResponse<unknown>>) => {
   const config = response.config as RequestConfig
   clearControllerByConfig(config)
@@ -192,6 +225,7 @@ const onResponse = async (response: AxiosResponse<ApiResponse<unknown>>) => {
   return Promise.reject(new Error(msg || 'Request failed'))
 }
 
+//拦截失败响应
 const onResponseError = async (error: AxiosError<ApiResponse<unknown>>) => {
   const config = (error.config || {}) as RequestConfig
   clearControllerByConfig(config)
@@ -211,9 +245,11 @@ const onResponseError = async (error: AxiosError<ApiResponse<unknown>>) => {
   return Promise.reject(error)
 }
 
+//注册响应、请求拦截器
 http.interceptors.request.use(onRequest)
 http.interceptors.response.use(onResponse as never, onResponseError as never)
 
+//把 http（axios 实例）包了一层，对外暴露统一的 request 对象
 const request = {
   get<T>(url: string, config?: RequestConfig) {
     return http.get<ApiResponse<T>, T>(url, config)
