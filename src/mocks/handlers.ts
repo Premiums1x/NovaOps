@@ -23,9 +23,11 @@ import {
   buildMenuData,
   buildSession,
   buildUserProfile,
+  createDynamicUser,
   getSessionFromAccessToken,
   getUser,
   refreshSession,
+  roles,
   switchTenantSession,
 } from './db'
 import {
@@ -105,12 +107,25 @@ export const handlers = [
     }
     await delay(350)
     const payload = (await request.json()) as LoginRequestDto
-    const user = getUser(payload.username)
-    if (!user || payload.password !== user.password) {
-      return fail(403, '用户名或密码错误')
+    const tenantId = payload.tenantId || 'tenant-a'
+
+    let user = getUser(payload.username)
+    if (!user) {
+      // 用户不存在 → 自动创建(与后端行为一致:身份不存在则拒绝)
+      if (!payload.roleId) {
+        return fail(403, '身份不能为空')
+      }
+      if (!roles.some(r => r.id === payload.roleId)) {
+        return fail(403, '身份不存在')
+      }
+      user = createDynamicUser(payload.username, payload.roleId)
+    } else {
+      // 用户存在 → 校验密码
+      if (payload.password !== user.password) {
+        return fail(403, '密码错误')
+      }
     }
 
-    const tenantId = payload.tenantId || 'tenant-a'
     const session = buildSession({
       username: user.username,
       tenantId,
@@ -120,6 +135,14 @@ export const handlers = [
       tenantId: session.tenantId,
     }
     return ok(data, '登录成功')
+  }),
+
+  http.get('/api/auth/roles', async () => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
+    await delay(100)
+    return ok(roles)
   }),
 
   http.post('/api/auth/refresh', async ({ request }) => {

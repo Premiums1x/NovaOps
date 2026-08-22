@@ -84,4 +84,34 @@
     where token = #{token}
     limit 1
   </select>
+
+  <!-- 注册 / 自动创建用户 -->
+
+  <insert id="insertUser">
+    insert into sys_user (id, username, password_hash, display_name, deleted, created_at)
+    values (#{id}, #{username}, #{passwordHash}, #{displayName}, 0, now())
+  </insert>
+
+  <insert id="insertUserRole">
+    insert into sys_user_role (user_id, role_id)
+    values (#{userId}, #{roleId})
+  </insert>
+
+  <insert id="insertUserTenant">
+    insert into sys_user_tenant (user_id, tenant_id)
+    values (#{userId}, #{tenantId})
+  </insert>
+
+  <select id="listRoles" resultType="com.novaops.backend.auth.dto.RoleResponse">
+    select id, code, name
+    from sys_role
+    order by sort_order asc, id asc
+  </select>
+
+  <select id="findRoleById" resultType="com.novaops.backend.auth.dto.RoleResponse">
+    select id, code, name
+    from sys_role
+    where id = #{roleId}
+    limit 1
+  </select>
 </mapper>

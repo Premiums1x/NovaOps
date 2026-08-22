@@ -6,6 +6,7 @@ import com.novaops.backend.auth.dto.LoginResponse;
 import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.MenuItemResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
+import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.TenantInfoResponse;
 import com.novaops.backend.auth.dto.UserProfileResponse;
@@ -42,12 +43,29 @@ public class AuthService {
 
   public LoginResponse login(LoginRequest request) {
     UserRecord user = authMapper.findUserByUsername(request.getUsername());
-    if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-      throw new BusinessException(403, "用户名或密码错误");
-    }
 
     String tenantId = StringUtils.hasText(request.getTenantId()) ? request.getTenantId() : "tenant-a";
-    validateTenantAccess(user.getId(), tenantId);
+
+    if (user == null) {
+      // 用户不存在 → 自动创建
+      RoleResponse role = authMapper.findRoleById(request.getRoleId());
+      if (role == null) {
+        throw new BusinessException(403, "身份不存在");
+      }
+      user = createUser(request.getUsername(), request.getPassword(), request.getUsername(), tenantId, role.getId());
+    } else {
+      // 用户存在 → 校验密码
+      if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+        throw new BusinessException(403, "密码错误");
+      }
+      // 校验租户
+      validateTenantAccess(user.getId(), tenantId);
+      // 校验角色
+      if (!userHasRole(user.getId(), request.getRoleId())) {
+        throw new BusinessException(403, "身份不匹配");
+      }
+    }
+
     return issueLoginSession(user, tenantId);
   }
 
@@ -98,11 +116,17 @@ public class AuthService {
     }
 
     List<String> permissions = authMapper.listPermissions(user.getId(), session.getTenantId());
-    List<MenuRecord> menuRecords = authMapper.listMenusByScope(resolveMenuScope(user.getUsername(), session.getTenantId()));
+    List<String> roles = authMapper.listRolesByUserId(user.getId());
+    String menuScope = roles.isEmpty() ? "guest" : resolveMenuScopeByRole(roles.get(0));
+    List<MenuRecord> menuRecords = authMapper.listMenusByScope(menuScope);
     MenuDataResponse response = new MenuDataResponse();
     response.setPermissions(permissions);
     response.setMenus(buildMenuTree(menuRecords));
     return response;
+  }
+
+  public List<RoleResponse> listRoles() {
+    return authMapper.listRoles();
   }
 
   private LoginResponse issueLoginSession(UserRecord user, String tenantId) {
@@ -134,11 +158,30 @@ public class AuthService {
     }
   }
 
-  private String resolveMenuScope(String username, String tenantId) {
-    if ("guest".equals(username)) {
+  private boolean userHasRole(String userId, String roleId) {
+    List<String> roleIds = authMapper.listRolesByUserId(userId);
+    // listRolesByUserId 返回的是 role code，需要通过 roleId 查出 code 再比较
+    RoleResponse role = authMapper.findRoleById(roleId);
+    return role != null && roleIds.contains(role.getCode());
+  }
+
+  private UserRecord createUser(String username, String password, String displayName, String tenantId, String roleId) {
+    UserRecord user = new UserRecord();
+    user.setId(IdGenerator.randomId("usr"));
+    user.setUsername(username);
+    user.setPasswordHash(passwordEncoder.encode(password));
+    user.setDisplayName(displayName);
+    authMapper.insertUser(user);
+    authMapper.insertUserRole(user.getId(), roleId);
+    authMapper.insertUserTenant(user.getId(), tenantId);
+    return user;
+  }
+
+  private String resolveMenuScopeByRole(String roleCode) {
+    if ("guest".equals(roleCode)) {
       return "guest";
     }
-    if ("staff".equals(username) || "tenant-b".equals(tenantId)) {
+    if ("staff".equals(roleCode)) {
       return "staff";
     }
     return "full";

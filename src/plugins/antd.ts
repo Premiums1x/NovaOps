@@ -1,4 +1,5 @@
 import type { App } from 'vue'
+//  Vue 应用实例，就是 createApp() 返回的那个对象。
 import {
   Alert,
   Breadcrumb,
@@ -70,5 +71,6 @@ const components = [
 export const setupAntd = (app: App) => {
   components.forEach((component) => {
     app.use(component)
+    // app.use() 会调用每个组件的 install 方法，等价于全局注册
   })
 }
