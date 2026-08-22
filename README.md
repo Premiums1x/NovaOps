@@ -34,11 +34,15 @@ NovaOps 是一个基于 Vue3 + TypeScript 的中后台项目，包含登录鉴�
 - 抽离了通用表格/表单能力，提高了列表页开发效率。
 - 保留了 Mock 与真实后端双模式切换，适合学习前后端联调和渐进式替换。
 
-## 演示账号
+## 登录方式
 
-- `admin / 123456`
-- `staff / 123456`
-- `guest / 123456`
+登录采用「账号 + 身份」模式，账号不存在时系统会自动注册：
+
+- 预置账号（密码统一为 `123456`）：
+  - `admin / 123456` → 管理员
+  - `staff / 123456` → 运维人员
+  - `guest / 123456` → 访客
+- 也可以输入任意新账号并选择一种身份（管理员 / 运维人员 / 访客），首次登录自动创建账号
 
 支持租户切换：
 
@@ -50,6 +54,7 @@ NovaOps 是一个基于 Vue3 + TypeScript 的中后台项目，包含登录鉴�
 ### 1. 认证与权限
 
 - 登录、退出、获取用户信息
+- 身份（角色）选择与账号自动注册（`GET /api/auth/roles`）
 - 请求拦截与 token 注入
 - 401 场景下的刷新 token 处理
 - 路由守卫（未登录跳转、无权限拦截）
@@ -236,6 +241,7 @@ npm run build
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `POST /api/auth/switch-tenant`
+- `GET /api/auth/roles`
 - `GET /api/auth/me`
 - `GET /api/auth/menu`
 - `GET /api/tickets`
