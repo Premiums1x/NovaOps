@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Modal, message, type TableProps, type UploadProps } from 'ant-design-vue'
+import { Modal, message, type TablePaginationConfig, type TableProps, type UploadProps } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import { deleteKbDocumentApi, getKbDocumentChunksApi, getKbDocumentsApi, updateKbDocumentTitleApi, uploadKbDocumentApi } from '@/api/kb'
 import type { KbChunkDto, KbDocumentDto, KbDocumentStatus } from '@/types/kb'
@@ -33,7 +33,7 @@ onMounted(fetchList);onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer)}
       <a-form-item label="状态"><a-select v-model:value="filters.status" allow-clear style="width:140px" :options="Object.entries(statusMeta).map(([value,item])=>({value,label:item.label}))" /></a-form-item>
       <a-form-item><a-button type="primary" @click="page=1;fetchList()">查询</a-button></a-form-item>
     </a-form>
-    <a-table :columns="columns" :data-source="list" :loading="loading" row-key="id" :pagination="{current:page,pageSize,total,showSizeChanger:true}" @change="p=>{page=p.current||1;pageSize=p.pageSize||10;fetchList()}">
+    <a-table :columns="columns" :data-source="list" :loading="loading" row-key="id" :pagination="{current:page,pageSize,total,showSizeChanger:true}" @change="(p: TablePaginationConfig) => { page = p.current || 1; pageSize = p.pageSize || 10; fetchList() }">
       <template #bodyCell="{column,record}">
         <template v-if="column.key==='status'"><a-tooltip v-if="record.errorMsg" :title="record.errorMsg"><a-tag :color="statusMeta[record.status as KbDocumentStatus].color">{{statusMeta[record.status as KbDocumentStatus].label}}</a-tag></a-tooltip><a-tag v-else :color="statusMeta[record.status as KbDocumentStatus].color">{{statusMeta[record.status as KbDocumentStatus].label}}</a-tag></template>
         <template v-else-if="column.key==='updatedAt'">{{dayjs(record.updatedAt).format('YYYY-MM-DD HH:mm')}}</template>
