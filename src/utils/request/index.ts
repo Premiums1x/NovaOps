@@ -141,49 +141,54 @@ const handleUnauthorized = async (config: RequestConfig) => {
 
   config._retry = true
 
-  if (!isRefreshing) {
-    isRefreshing = true
-    try {
-      const refreshToken = getRefreshToken()
-      if (!refreshToken) {
-        throw new Error('Missing refresh token')
-      }
-      //data: AuthTokenDto
-      const response = await axios.post<ApiResponse<AuthTokenDto>>(
-        `${API_BASE_URL}/auth/refresh`,
-        { refreshToken },
-        { timeout: 10000 }
-      )
-      if (response.data.code !== 0) {
-        throw new Error(response.data.message || 'Refresh failed')
-      }
-      const tokens = response.data.data
-      setTokens(tokens.accessToken, tokens.refreshToken)//localStorage
-      await syncStoreTokens(tokens.accessToken, tokens.refreshToken)
-      flushRefreshQueue(null, tokens.accessToken)//用新token重发请求
-    } catch (error) {
-      //一旦捕获到error
-      flushRefreshQueue(error)//全部拒绝请求
-      await clearAuthState()
-      clearTokens()
-      window.location.replace('/login')
-      throw error
-    } finally {
-      isRefreshing = false
-    }
+  //已经有别的请求在刷新 token → 把当前请求的 resolve/reject 存进队列，
+  //等那个刷新完成的请求调用 flushRefreshQueue 唤醒，自己不要重复刷新
+  if (isRefreshing) {
+    return new Promise((resolve, reject) => {
+      refreshQueue.push({
+        resolve: (token) => {
+          setAuthorizationHeader(config, token)
+          resolve(http(config))
+        },
+        reject: (error) => reject(error),
+      })
+    })
   }
 
-  // Promise 暂时"卡住"，不立刻 resolve 也不 reject
-  // 把 resolve/reject 存进队列 
-  return new Promise((resolve, reject) => {
-    refreshQueue.push({
-      resolve: (token) => {
-        setAuthorizationHeader(config, token)
-        resolve(http(config))
-      },
-      reject: (error) => reject(error),
-    })
-  })
+  isRefreshing = true
+  try {
+    const refreshToken = getRefreshToken()
+    if (!refreshToken) {
+      throw new Error('Missing refresh token')
+    }
+    //data: AuthTokenDto
+    const response = await axios.post<ApiResponse<AuthTokenDto>>(
+      `${API_BASE_URL}/auth/refresh`,
+      { refreshToken },
+      { timeout: 10000 }
+    )
+    if (response.data.code !== 0) {
+      throw new Error(response.data.message || 'Refresh failed')
+    }
+    const tokens = response.data.data
+    setTokens(tokens.accessToken, tokens.refreshToken)//localStorage
+    await syncStoreTokens(tokens.accessToken, tokens.refreshToken)
+    flushRefreshQueue(null, tokens.accessToken)//用新token重发排队的请求
+
+    //触发刷新的请求自己直接用新 token 重发，不能也入队——
+    //flushRefreshQueue 刚刚执行完，队列不会再被唤醒，入队会永远挂起
+    setAuthorizationHeader(config, tokens.accessToken)
+    return http(config)
+  } catch (error) {
+    //一旦捕获到error
+    flushRefreshQueue(error)//全部拒绝请求
+    await clearAuthState()
+    clearTokens()
+    window.location.replace('/login')
+    throw error
+  } finally {
+    isRefreshing = false
+  }
 }
 
 //请求拦截器

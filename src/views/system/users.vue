@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { Modal, message, type TableProps } from 'ant-design-vue'
+import { Modal, message, type TablePaginationConfig, type TableProps } from 'ant-design-vue'
 import { getRolesApi, getUsersApi, resetUserPasswordApi, updateUserRoleApi, updateUserStatusApi } from '@/api/auth'
 import type { RoleDto, UserListItemDto } from '@/types/auth'
 
@@ -64,7 +64,7 @@ onMounted(async () => { roles.value = await getRolesApi(); await fetchUsers() })
         <a-form-item label="状态"><a-select v-model:value="filters.enabled" allow-clear style="width: 120px" :options="[{ label: '启用', value: true }, { label: '禁用', value: false }]" /></a-form-item>
         <a-form-item><a-button type="primary" @click="search">查询</a-button></a-form-item>
       </a-form>
-      <a-table :columns="columns" :data-source="users" :loading="loading" row-key="id" :pagination="{ current: page, pageSize, total, showSizeChanger: true }" @change="(p) => { page = p.current || 1; pageSize = p.pageSize || 10; fetchUsers() }">
+      <a-table :columns="columns" :data-source="users" :loading="loading" row-key="id" :pagination="{ current: page, pageSize, total, showSizeChanger: true }" @change="(p: TablePaginationConfig) => { page = p.current || 1; pageSize = p.pageSize || 10; fetchUsers() }">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'role'"><a-select :value="record.roleId" style="width: 140px" :options="roles.map(r => ({ label: r.name, value: r.id }))" @change="(value: string) => changeRole(record as UserListItemDto, value)" /></template>
           <template v-else-if="column.key === 'enabled'"><a-tag :color="record.enabled ? 'success' : 'error'">{{ record.enabled ? '启用' : '禁用' }}</a-tag></template>
