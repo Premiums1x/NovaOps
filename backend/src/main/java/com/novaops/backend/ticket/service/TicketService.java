@@ -1,5 +1,6 @@
 package com.novaops.backend.ticket.service;
 
+import com.novaops.backend.auth.service.AuthService;
 import com.novaops.backend.common.api.PageResult;
 import com.novaops.backend.common.exception.BusinessException;
 import com.novaops.backend.common.security.CurrentSession;
@@ -29,15 +30,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
 public class TicketService {
 
   private final TicketMapper ticketMapper;
+  private final AuthService authService;
 
-  public TicketService(TicketMapper ticketMapper) {
+  public TicketService(TicketMapper ticketMapper, AuthService authService) {
     this.ticketMapper = ticketMapper;
+    this.authService = authService;
   }
 
   public PageResult<TicketListItemResponse> list(CurrentSession session, TicketListQuery query) {
@@ -81,12 +85,12 @@ public class TicketService {
     return buildDetail(record);
   }
 
+  @Transactional
   public TicketDetailResponse create(CurrentSession session, CreateTicketRequest request) {
     TicketRecord record = new TicketRecord();
     LocalDateTime now = LocalDateTime.now();
-    long nextSequence = ticketMapper.countTicketsByTenant(session.getTenantId()) + 1;
 
-    record.setId(IdGenerator.ticketId(session.getTenantId(), nextSequence));
+    record.setId(IdGenerator.ticketId(session.getTenantId()));
     record.setTenantId(session.getTenantId());
     record.setTitle(request.getTitle());
     record.setDescription(request.getDescription());
@@ -105,6 +109,7 @@ public class TicketService {
     return buildDetail(record);
   }
 
+  @Transactional
   public TicketDetailResponse update(CurrentSession session, String ticketId, UpdateTicketRequest request) {
     TicketRecord record = requireTicket(session.getTenantId(), ticketId);
 
@@ -134,7 +139,18 @@ public class TicketService {
     return buildDetail(record);
   }
 
+  @Transactional
   public TicketDetailResponse action(CurrentSession session, String ticketId, TicketActionRequest request) {
+    // 流转动作按动作细分权限，接口注解无法表达这种动态映射
+    String requiredPermission = switch (request.getAction()) {
+      case "assign" -> "ticket:assign";
+      case "transfer" -> "ticket:transfer";
+      case "close" -> "ticket:close";
+      case "advance", "reject" -> "ticket:advance";
+      default -> throw new BusinessException(400, "不支持的工单动作");
+    };
+    authService.requirePermission(session, requiredPermission);
+
     TicketRecord record = requireTicket(session.getTenantId(), ticketId);
     String previousStatus = record.getStatus();
 
@@ -179,6 +195,7 @@ public class TicketService {
     return ticketMapper.listComments(ticketId).stream().map(this::toComment).toList();
   }
 
+  @Transactional
   public TicketCommentResponse createComment(CurrentSession session, String ticketId, CreateCommentRequest request) {
     TicketRecord record = requireTicket(session.getTenantId(), ticketId);
     LocalDateTime now = LocalDateTime.now();
@@ -196,6 +213,7 @@ public class TicketService {
     return toComment(comment);
   }
 
+  @Transactional
   public TicketAttachmentResponse uploadAttachment(CurrentSession session, String ticketId, UploadAttachmentRequest request) {
     TicketRecord record = requireTicket(session.getTenantId(), ticketId);
     LocalDateTime now = LocalDateTime.now();
