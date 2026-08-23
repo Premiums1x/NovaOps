@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse, passthrough } from 'msw'
 import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, UserProfile } from '@/types/auth'
 import type { MenuDataDto } from '@/types/menu'
+import type { ConversationDto } from '@/types/agent'
 import type {
   AssetActionDto,
   AssetDetailDto,
@@ -18,7 +19,7 @@ import type {
   UploadAttachmentDto,
 } from '@/types/ticket'
 import type { DashboardMetricsQueryDto } from '@/types/dashboard'
-import type { KbListQueryDto, SaveKbDto } from '@/types/kb'
+import type { KbChunkDto, KbDocumentDto, KbListQueryDto, SaveKbDto } from '@/types/kb'
 import {
   buildMenuData,
   buildSession,
@@ -28,6 +29,10 @@ import {
   getUser,
   refreshSession,
   roles,
+  listMockUsers,
+  setMockUserPassword,
+  setMockUserRole,
+  setMockUserStatus,
   switchTenantSession,
 } from './db'
 import {
@@ -77,6 +82,9 @@ const fail = (code: number, message: string) => {
 
 const mockMode = (import.meta.env.VITE_ENABLE_MOCK || 'full').toLowerCase()
 const shouldPassthroughTicketBackend = mockMode === 'partial'
+const mockDocuments: KbDocumentDto[] = [{ id:'mock-doc-1',tenantId:'tenant-a',title:'NovaOps 使用手册',fileName:'novaops-guide.md',fileType:'md',fileSize:4096,status:'READY',chunkCount:2,createdBy:'u-admin',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString() }]
+const mockChunks: Record<string,KbChunkDto[]> = { 'mock-doc-1': [{id:'chunk-1',documentId:'mock-doc-1',tenantId:'tenant-a',chunkIndex:0,content:'NovaOps 是企业知识与运维协作平台。',vectorId:'vector-1'},{id:'chunk-2',documentId:'mock-doc-1',tenantId:'tenant-a',chunkIndex:1,content:'知识库文档按租户隔离，并支持 RAG 检索。',vectorId:'vector-2'}] }
+const mockConversations: ConversationDto[] = []
 const getSession = (request: Request) => {
   const session = getSessionFromAccessToken(request.headers.get('Authorization'))
   if (session) {
@@ -124,6 +132,7 @@ export const handlers = [
       if (payload.password !== user.password) {
         return fail(403, '密码错误')
       }
+      if (!user.enabled) return fail(403, '账号已被禁用')
     }
 
     const session = buildSession({
@@ -199,6 +208,72 @@ export const handlers = [
     }
     const menuData: MenuDataDto = buildMenuData(session.username, session.tenantId)
     return ok(menuData)
+  }),
+
+  http.get('/api/auth/users', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session || getUser(session.username)?.roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get('page') || 1)
+    const pageSize = Number(url.searchParams.get('pageSize') || 10)
+    const keyword = (url.searchParams.get('keyword') || '').toLowerCase()
+    const roleId = url.searchParams.get('roleId')
+    const enabledText = url.searchParams.get('enabled')
+    const filtered = listMockUsers().filter((item) => (!keyword || `${item.username} ${item.displayName}`.toLowerCase().includes(keyword)) && (!roleId || item.roleId === roleId) && (enabledText === null || item.enabled === (enabledText === 'true')))
+    return ok({ list: filtered.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: filtered.length })
+  }),
+
+  http.put('/api/auth/users/:id/status', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session || getUser(session.username)?.roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
+    const payload = await request.json() as { enabled: boolean }
+    return setMockUserStatus(String(params.id), payload.enabled) ? ok(null, '用户状态已更新') : fail(404, '用户不存在')
+  }),
+
+  http.put('/api/auth/users/:id/role', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session || getUser(session.username)?.roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
+    const payload = await request.json() as { roleId: string }
+    return setMockUserRole(String(params.id), payload.roleId) ? ok(null, '用户身份已更新') : fail(404, '用户或身份不存在')
+  }),
+
+  http.put('/api/auth/users/:id/password', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session || getUser(session.username)?.roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
+    const payload = await request.json() as { password: string }
+    return setMockUserPassword(String(params.id), payload.password) ? ok(null, '密码已重置') : fail(404, '用户不存在')
+  }),
+
+  http.get('/api/agent/conversations', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    if (!getSession(request)) return fail(401, 'token 无效')
+    return ok(mockConversations)
+  }),
+  http.get('/api/agent/conversations/:id', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    if (!getSession(request)) return fail(401, 'token 无效')
+    const conversation = mockConversations.find((item) => item.id === String(params.id))
+    return conversation ? ok({ conversation, messages: [] }) : fail(404, '会话不存在')
+  }),
+  http.post('/api/agent/chat', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session) return fail(401, 'token 无效')
+    const payload = await request.json() as { conversationId?: string; content: string }
+    const conversationId = payload.conversationId || `mock-conv-${Date.now()}`
+    if (!payload.conversationId) mockConversations.unshift({ id: conversationId, tenantId: session.tenantId, userId: session.username, title: payload.content.slice(0, 40), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    const answer = '根据知识库资料，NovaOps 会对文档按租户隔离，并在回答中提供可回溯引用。[1]'
+    const frames = [...answer.matchAll(/.{1,12}/gu)].map((match) => `event: delta\ndata: ${JSON.stringify({ conversationId, content: match[0] })}\n\n`)
+    frames.push(`event: citation\ndata: ${JSON.stringify({ conversationId, citations: [{ index: 1, documentId: 'mock-doc-1', documentName: 'NovaOps 使用手册', chunkId: 'chunk-2', content: '知识库文档按租户隔离，并支持 RAG 检索。', score: .92 }] })}\n\n`)
+    frames.push(`event: meta\ndata: ${JSON.stringify({ conversationId, validationPassed: true, validationReason: '知识库引用校验通过' })}\n\n`)
+    frames.push(`event: done\ndata: ${JSON.stringify({ conversationId })}\n\n`)
+    const encoder = new TextEncoder()
+    const body = new ReadableStream({ start(controller) { frames.forEach((frame) => controller.enqueue(encoder.encode(frame))); controller.close() } })
+    return new HttpResponse(body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } })
   }),
 
   http.get('/api/tickets', async ({ request }) => {
@@ -466,6 +541,27 @@ export const handlers = [
     }
     return ok(buildDashboardMetrics(session.tenantId, query.startDate, query.endDate))
   }),
+
+  http.get('/api/kb/documents', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session=getSession(request); if(!session)return fail(401,'token 无效')
+    const url=new URL(request.url),page=Number(url.searchParams.get('page')||1),pageSize=Number(url.searchParams.get('pageSize')||10),keyword=url.searchParams.get('keyword')||'',fileType=url.searchParams.get('fileType'),status=url.searchParams.get('status')
+    const filtered=mockDocuments.filter(item=>item.tenantId===session.tenantId&&(!keyword||`${item.title}${item.fileName}`.includes(keyword))&&(!fileType||item.fileType===fileType)&&(!status||item.status===status))
+    return ok({list:filtered.slice((page-1)*pageSize,page*pageSize),page,pageSize,total:filtered.length})
+  }),
+
+  http.post('/api/kb/documents', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session=getSession(request); if(!session)return fail(401,'token 无效')
+    const form=await request.formData(),file=form.get('file') as File,title=String(form.get('title')||file.name),id=`mock-doc-${Date.now()}`,ext=(file.name.split('.').pop()||'md') as KbDocumentDto['fileType'],now=new Date().toISOString()
+    const document:KbDocumentDto={id,tenantId:session.tenantId,title,fileName:file.name,fileType:ext,fileSize:file.size,status:'PARSING',chunkCount:0,createdBy:session.username,createdAt:now,updatedAt:now};mockDocuments.unshift(document)
+    window.setTimeout(()=>{document.status='READY';document.chunkCount=1;document.updatedAt=new Date().toISOString();mockChunks[id]=[{id:`${id}-chunk`,documentId:id,tenantId:session.tenantId,chunkIndex:0,content:`${file.name} 的 Mock 解析内容`,vectorId:`${id}-vector`}]},800)
+    return ok(document,'文件已上传，正在解析')
+  }),
+
+  http.get('/api/kb/documents/:id/chunks', async ({ request,params }) => { if(shouldPassthroughTicketBackend)return passthrough();if(!getSession(request))return fail(401,'token 无效');return ok(mockChunks[String(params.id)]||[]) }),
+  http.put('/api/kb/documents/:id', async ({ request,params }) => { if(shouldPassthroughTicketBackend)return passthrough();if(!getSession(request))return fail(401,'token 无效');const item=mockDocuments.find(value=>value.id===String(params.id));if(!item)return fail(404,'文档不存在');item.title=String(((await request.json()) as {title:string}).title);item.updatedAt=new Date().toISOString();return ok(null,'标题已更新') }),
+  http.delete('/api/kb/documents/:id', async ({ request,params }) => { if(shouldPassthroughTicketBackend)return passthrough();if(!getSession(request))return fail(401,'token 无效');const index=mockDocuments.findIndex(value=>value.id===String(params.id));if(index<0)return fail(404,'文档不存在');mockDocuments.splice(index,1);delete mockChunks[String(params.id)];return ok(null,'文档已删除') }),
 
   http.get('/api/kb', async ({ request }) => {
     await delay(220)

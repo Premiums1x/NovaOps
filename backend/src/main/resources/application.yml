@@ -13,6 +13,26 @@ spring:
     default-property-inclusion: non_null
     serialization:
       write-dates-as-timestamps: false
+  servlet:
+    multipart:
+      max-file-size: ${NOVAOPS_KB_MAX_FILE_SIZE:30MB}
+      max-request-size: ${NOVAOPS_KB_MAX_FILE_SIZE:30MB}
+  ai:
+    retry:
+      max-attempts: ${SILICONFLOW_MAX_ATTEMPTS:2}
+      backoff:
+        initial-interval: 500ms
+        max-interval: 2s
+        multiplier: 2
+    openai:
+      base-url: ${SILICONFLOW_BASE_URL:https://api.siliconflow.cn}
+      api-key: ${SILICONFLOW_API_KEY:local-not-configured}
+      chat:
+        options:
+          model: ${SILICONFLOW_CHAT_MODEL:Qwen/Qwen3-8B}
+      embedding:
+        options:
+          model: ${SILICONFLOW_EMBEDDING_MODEL:BAAI/bge-m3}
 
 mybatis:
   mapper-locations: classpath*:mapper/*.xml
@@ -24,3 +44,18 @@ app:
     jwt-secret: ${NOVAOPS_JWT_SECRET:change-this-secret-for-local-dev-please}
     access-token-expire-seconds: 1800
     refresh-token-expire-days: 7
+  kb:
+    storage-path: ${NOVAOPS_KB_STORAGE:./data/kb}
+    max-file-size-bytes: ${NOVAOPS_KB_MAX_FILE_BYTES:31457280}
+    chunk-size: ${NOVAOPS_KB_CHUNK_SIZE:2400}
+    chunk-overlap: ${NOVAOPS_KB_CHUNK_OVERLAP:300}
+    default-top-k: ${NOVAOPS_KB_TOP_K:5}
+    default-min-score: ${NOVAOPS_KB_MIN_SCORE:0.55}
+    qdrant-base-url: ${QDRANT_BASE_URL:http://localhost:6333}
+    qdrant-collection: ${QDRANT_COLLECTION:novaops_kb}
+    qdrant-api-key: ${QDRANT_API_KEY:}
+  agent:
+    sse-timeout-ms: ${NOVAOPS_AGENT_SSE_TIMEOUT_MS:120000}
+    top-k: ${NOVAOPS_AGENT_TOP_K:5}
+    min-score: ${NOVAOPS_AGENT_MIN_SCORE:0.55}
+    validation-score: ${NOVAOPS_AGENT_VALIDATION_SCORE:0.45}

@@ -10,6 +10,9 @@ import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.TenantInfoResponse;
 import com.novaops.backend.auth.dto.UserProfileResponse;
+import com.novaops.backend.auth.dto.UserListQuery;
+import com.novaops.backend.auth.dto.UserListItemResponse;
+import com.novaops.backend.common.api.PageResult;
 import com.novaops.backend.auth.mapper.AuthMapper;
 import com.novaops.backend.auth.model.MenuRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
@@ -54,6 +57,9 @@ public class AuthService {
       }
       user = createUser(request.getUsername(), request.getPassword(), request.getUsername(), tenantId, role.getId());
     } else {
+      if (!Boolean.TRUE.equals(user.getEnabled())) {
+        throw new BusinessException(403, "账号已被禁用");
+      }
       // 用户存在 → 校验密码
       if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
         throw new BusinessException(403, "密码错误");
@@ -76,7 +82,7 @@ public class AuthService {
     }
 
     UserRecord user = authMapper.findUserById(record.getUserId());
-    if (user == null) {
+    if (user == null || !Boolean.TRUE.equals(user.getEnabled())) {
       throw new BusinessException(401, "refresh token 已失效");
     }
 
@@ -126,7 +132,62 @@ public class AuthService {
   }
 
   public List<RoleResponse> listRoles() {
-    return authMapper.listRoles();
+    List<RoleResponse> roles = authMapper.listRoles();
+    roles.forEach(role -> role.setPermissions(authMapper.listPermissionsByRoleId(role.getId())));
+    return roles;
+  }
+
+  public PageResult<UserListItemResponse> listUsers(CurrentSession session, UserListQuery query) {
+    requireAdmin(session);
+    int offset = (query.getPage() - 1) * query.getPageSize();
+    List<UserListItemResponse> list = authMapper.listUsers(query.getKeyword(), query.getRoleId(), query.getEnabled(), offset, query.getPageSize());
+    long total = authMapper.countUsers(query.getKeyword(), query.getRoleId(), query.getEnabled());
+    return new PageResult<>(list, query.getPage(), query.getPageSize(), total);
+  }
+
+  public void updateUserStatus(CurrentSession session, String userId, boolean enabled) {
+    requireAdmin(session);
+    if (session.getUserId().equals(userId) && !enabled) throw new BusinessException(400, "不能禁用当前登录账号");
+    requireUser(userId);
+    authMapper.updateUserStatus(userId, enabled);
+    authMapper.revokeRefreshTokens(userId);
+  }
+
+  public void updateUserRole(CurrentSession session, String userId, String roleId) {
+    requireAdmin(session);
+    if (authMapper.findRoleById(roleId) == null) throw new BusinessException(400, "身份不存在");
+    requireUser(userId);
+    authMapper.updateUserRole(userId, roleId);
+    authMapper.revokeRefreshTokens(userId);
+  }
+
+  public void resetPassword(CurrentSession session, String userId, String password) {
+    requireAdmin(session);
+    requireUser(userId);
+    authMapper.updateUserPassword(userId, passwordEncoder.encode(password));
+    authMapper.revokeRefreshTokens(userId);
+  }
+
+  public UserRecord requireEnabledUser(String userId) {
+    UserRecord user = requireUser(userId);
+    if (!Boolean.TRUE.equals(user.getEnabled())) throw new BusinessException(403, "账号已被禁用");
+    return user;
+  }
+
+  private UserRecord requireUser(String userId) {
+    UserRecord user = authMapper.findUserById(userId);
+    if (user == null) throw new BusinessException(404, "用户不存在");
+    return user;
+  }
+
+  private void requireAdmin(CurrentSession session) {
+    UserRecord user = requireEnabledUser(session.getUserId());
+    RoleResponse role = authMapper.findRoleById(user.getRoleId());
+    if (role == null || !"admin".equals(role.getCode())) throw new BusinessException(403, "仅系统管理员可操作");
+  }
+
+  public void assertAdmin(CurrentSession session) {
+    requireAdmin(session);
   }
 
   private LoginResponse issueLoginSession(UserRecord user, String tenantId) {
@@ -171,8 +232,8 @@ public class AuthService {
     user.setUsername(username);
     user.setPasswordHash(passwordEncoder.encode(password));
     user.setDisplayName(displayName);
+    user.setRoleId(roleId);
     authMapper.insertUser(user);
-    authMapper.insertUserRole(user.getId(), roleId);
     authMapper.insertUserTenant(user.getId(), tenantId);
     return user;
   }

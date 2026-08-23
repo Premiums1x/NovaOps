@@ -6,6 +6,8 @@ public class UserRecord {
   private String username;
   private String passwordHash;
   private String displayName;
+  private String roleId;
+  private Boolean enabled;
 
   public String getId() {
     return id;
@@ -38,4 +40,9 @@ public class UserRecord {
   public void setDisplayName(String displayName) {
     this.displayName = displayName;
   }
+
+  public String getRoleId() { return roleId; }
+  public void setRoleId(String roleId) { this.roleId = roleId; }
+  public Boolean getEnabled() { return enabled; }
+  public void setEnabled(Boolean enabled) { this.enabled = enabled; }
 }

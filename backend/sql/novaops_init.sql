@@ -1,4 +1,8 @@
 drop table if exists biz_ticket_attachment;
+drop table if exists kb_chunk;
+drop table if exists kb_document;
+drop table if exists agent_message;
+drop table if exists agent_conversation;
 drop table if exists biz_ticket_comment;
 drop table if exists biz_ticket_asset_rel;
 drop table if exists biz_ticket_timeline;
@@ -24,6 +28,8 @@ create table sys_user (
   username varchar(64) not null unique,
   password_hash varchar(255) not null,
   display_name varchar(100) not null,
+  role_id varchar(64) not null,
+  enabled tinyint not null default 1,
   deleted tinyint not null default 0,
   created_at datetime not null default current_timestamp
 );
@@ -32,6 +38,7 @@ create table sys_role (
   id varchar(64) primary key,
   code varchar(64) not null unique,
   name varchar(100) not null,
+  description varchar(255) not null,
   sort_order int not null default 0
 );
 
@@ -55,12 +62,6 @@ create table sys_menu (
   menu_scope varchar(20) not null
 );
 
-create table sys_user_role (
-  user_id varchar(64) not null,
-  role_id varchar(64) not null,
-  primary key (user_id, role_id)
-);
-
 create table sys_role_permission (
   role_id varchar(64) not null,
   permission_id varchar(64) not null,
@@ -81,6 +82,57 @@ create table sys_refresh_token (
   expires_at datetime not null,
   revoked tinyint not null default 0,
   created_at datetime not null default current_timestamp
+);
+
+create table kb_document (
+  id varchar(64) primary key,
+  tenant_id varchar(64) not null,
+  title varchar(255) not null,
+  file_name varchar(255) not null,
+  file_type varchar(16) not null,
+  file_size bigint not null,
+  storage_path varchar(500) not null,
+  status varchar(32) not null,
+  chunk_count int not null default 0,
+  error_msg varchar(1000) null,
+  created_by varchar(64) not null,
+  created_at datetime not null default current_timestamp,
+  updated_at datetime not null default current_timestamp,
+  deleted tinyint not null default 0,
+  index idx_kb_document_tenant_status (tenant_id, status),
+  index idx_kb_document_tenant_updated (tenant_id, updated_at desc)
+);
+
+create table kb_chunk (
+  id varchar(64) primary key,
+  document_id varchar(64) not null,
+  tenant_id varchar(64) not null,
+  chunk_index int not null,
+  content mediumtext not null,
+  vector_id varchar(64) not null,
+  index idx_kb_chunk_document (document_id, chunk_index),
+  index idx_kb_chunk_tenant (tenant_id)
+);
+
+create table agent_conversation (
+  id varchar(64) primary key,
+  tenant_id varchar(64) not null,
+  user_id varchar(64) not null,
+  title varchar(255) not null,
+  created_at datetime not null default current_timestamp,
+  updated_at datetime not null default current_timestamp,
+  index idx_agent_conversation_owner (tenant_id,user_id,updated_at desc)
+);
+
+create table agent_message (
+  id varchar(64) primary key,
+  conversation_id varchar(64) not null,
+  role varchar(16) not null,
+  content mediumtext not null,
+  citations_json text null,
+  validation_passed tinyint null,
+  created_at datetime not null default current_timestamp,
+  index idx_agent_message_conversation (conversation_id,created_at)
 );
 
 create table biz_ticket (
@@ -141,15 +193,15 @@ insert into sys_tenant (id, name, sort_order) values
   ('tenant-a', 'Tenant A', 10),
   ('tenant-b', 'Tenant B', 20);
 
-insert into sys_user (id, username, password_hash, display_name, deleted) values
-  ('u-admin', 'admin', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'System Admin', 0),
-  ('u-staff', 'staff', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Support Staff', 0),
-  ('u-guest', 'guest', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Read-only Guest', 0);
+insert into sys_user (id, username, password_hash, display_name, role_id, enabled, deleted) values
+  ('u-admin', 'admin', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'System Admin', 'role-admin', 1, 0),
+  ('u-staff', 'staff', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Support Staff', 'role-staff', 1, 0),
+  ('u-guest', 'guest', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Read-only Guest', 'role-guest', 1, 0);
 
-insert into sys_role (id, code, name, sort_order) values
-  ('role-admin', 'admin', '管理员', 10),
-  ('role-staff', 'staff', '运维人员', 20),
-  ('role-guest', 'guest', '访客', 30);
+insert into sys_role (id, code, name, description, sort_order) values
+  ('role-admin', 'admin', '管理员', '管理用户、身份、知识库以及全部业务数据', 10),
+  ('role-staff', 'staff', '运维人员', '处理工单、资产与使用智能问答', 20),
+  ('role-guest', 'guest', '访客', '只读访问授权看板与智能问答', 30);
 
 insert into sys_permission (id, code, name) values
   ('perm-dashboard-view', 'dashboard:view', '查看看板'),
@@ -166,12 +218,9 @@ insert into sys_permission (id, code, name) values
   ('perm-asset-claim', 'asset:claim', '领用资产'),
   ('perm-asset-scrap', 'asset:scrap', '报废资产'),
   ('perm-kb-view', 'kb:view', '查看知识库'),
-  ('perm-kb-edit', 'kb:edit', '编辑知识库');
-
-insert into sys_user_role (user_id, role_id) values
-  ('u-admin', 'role-admin'),
-  ('u-staff', 'role-staff'),
-  ('u-guest', 'role-guest');
+  ('perm-kb-edit', 'kb:edit', '编辑知识库'),
+  ('perm-auth-user-manage', 'auth:user:manage', '管理用户与身份'),
+  ('perm-agent-chat', 'agent:chat', '使用智能问答');
 
 insert into sys_user_tenant (user_id, tenant_id) values
   ('u-admin', 'tenant-a'),
@@ -182,6 +231,14 @@ insert into sys_user_tenant (user_id, tenant_id) values
   ('u-guest', 'tenant-b');
 
 insert into sys_role_permission (role_id, permission_id, tenant_id) values
+  ('role-admin', 'perm-agent-chat', 'tenant-a'),
+  ('role-admin', 'perm-agent-chat', 'tenant-b'),
+  ('role-staff', 'perm-agent-chat', 'tenant-a'),
+  ('role-staff', 'perm-agent-chat', 'tenant-b'),
+  ('role-guest', 'perm-agent-chat', 'tenant-a'),
+  ('role-guest', 'perm-agent-chat', 'tenant-b'),
+  ('role-admin', 'perm-auth-user-manage', 'tenant-a'),
+  ('role-admin', 'perm-auth-user-manage', 'tenant-b'),
   ('role-admin', 'perm-dashboard-view', 'tenant-a'),
   ('role-admin', 'perm-ticket-view', 'tenant-a'),
   ('role-admin', 'perm-ticket-create', 'tenant-a'),
@@ -217,15 +274,11 @@ insert into sys_role_permission (role_id, permission_id, tenant_id) values
   ('role-staff', 'perm-ticket-comment', 'tenant-a'),
   ('role-staff', 'perm-asset-view', 'tenant-a'),
   ('role-staff', 'perm-asset-claim', 'tenant-a'),
-  ('role-staff', 'perm-kb-view', 'tenant-a'),
-  ('role-staff', 'perm-kb-edit', 'tenant-a'),
   ('role-staff', 'perm-dashboard-view', 'tenant-b'),
   ('role-staff', 'perm-ticket-view', 'tenant-b'),
   ('role-staff', 'perm-ticket-create', 'tenant-b'),
   ('role-staff', 'perm-ticket-comment', 'tenant-b'),
   ('role-staff', 'perm-asset-view', 'tenant-b'),
-  ('role-staff', 'perm-kb-view', 'tenant-b'),
-  ('role-staff', 'perm-kb-edit', 'tenant-b'),
   ('role-guest', 'perm-dashboard-view', 'tenant-a'),
   ('role-guest', 'perm-dashboard-view', 'tenant-b');
 
@@ -237,11 +290,10 @@ insert into sys_menu (id, title, name, path, component, icon, permission_code, k
   ('full-asset-list', '资产列表', 'AssetList', '/asset/list', 'AssetListView', null, 'asset:view', 1, 'full-asset', 31, 'full'),
   ('full-kb', '知识库', 'KbRoot', '/kb', 'RouteView', 'kb', null, 1, null, 40, 'full'),
   ('full-kb-list', '文章列表', 'KbList', '/kb/list', 'KbListView', null, 'kb:view', 1, 'full-kb', 41, 'full'),
+  ('full-user', '用户与身份', 'UserManagement', '/system/users', 'UserManagementView', 'user', 'auth:user:manage', 1, null, 50, 'full'),
   ('staff-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'staff'),
   ('staff-ticket', '工单', 'TicketRoot', '/ticket', 'RouteView', 'ticket', null, 1, null, 20, 'staff'),
   ('staff-ticket-list', '工单列表', 'TicketList', '/ticket/list', 'TicketListView', null, 'ticket:view', 1, 'staff-ticket', 21, 'staff'),
-  ('staff-kb', '知识库', 'KbRoot', '/kb', 'RouteView', 'kb', null, 1, null, 30, 'staff'),
-  ('staff-kb-list', '文章列表', 'KbList', '/kb/list', 'KbListView', null, 'kb:view', 1, 'staff-kb', 31, 'staff'),
   ('guest-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'guest');
 
 insert into biz_ticket (id, tenant_id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at) values

@@ -8,6 +8,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -28,6 +29,11 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(ConstraintViolationException.class)
   public ResponseEntity<ApiResponse<Object>> handleConstraintViolation(ConstraintViolationException exception) {
     return ResponseEntity.ok(ApiResponse.failure(400, exception.getMessage()));
+  }
+
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  public ResponseEntity<ApiResponse<Object>> handleUploadTooLarge(MaxUploadSizeExceededException exception) {
+    return ResponseEntity.ok(ApiResponse.failure(400, "上传文件超过允许的大小上限"));
   }
 
   @ExceptionHandler(Exception.class)

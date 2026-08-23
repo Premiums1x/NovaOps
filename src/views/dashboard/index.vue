@@ -18,6 +18,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import type { BarSeriesOption, LineSeriesOption, PieSeriesOption } from 'echarts/charts'
 import { getDashboardMetricsApi } from '@/api/dashboard'
 import { useAuthStore } from '@/store/auth'
+import { useThemeStore } from '@/store/theme'
 import type { DashboardMetricsDto } from '@/types/dashboard'
 
 defineOptions({
@@ -46,6 +47,7 @@ type ECOption = ComposeOption<
 >
 
 const authStore = useAuthStore()
+const themeStore = useThemeStore()
 const loading = ref(false)
 const metrics = ref<DashboardMetricsDto | null>(null)
 const rangeValue = ref<[Dayjs, Dayjs]>([dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')])
@@ -67,9 +69,11 @@ const applyQuickRange = (days: number) => {
   rangeValue.value = [dayjs().subtract(days - 1, 'day').startOf('day'), dayjs().endOf('day')]
 }
 
+const chartColors = () => ({ text: getComputedStyle(document.documentElement).getPropertyValue('--nova-text').trim(), secondary: getComputedStyle(document.documentElement).getPropertyValue('--nova-text-secondary').trim(), border: getComputedStyle(document.documentElement).getPropertyValue('--nova-border').trim(), primary: themeStore.primaryColor })
 const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
+  textStyle: { color: chartColors().text },
   tooltip: { trigger: 'axis' },
-  legend: { data: ['新增工单', '完成工单'] },
+  legend: { data: ['新增工单', '完成工单'], textStyle: { color: chartColors().text } },
   grid: { left: 40, right: 20, top: 30, bottom: 24 },
   xAxis: {
     type: 'category',
@@ -78,7 +82,7 @@ const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
   },
   yAxis: {
     type: 'value',
-    splitLine: { lineStyle: { type: 'dashed' } },
+    splitLine: { lineStyle: { type: 'dashed', color: chartColors().border } },
   },
   series: [
     {
@@ -87,7 +91,7 @@ const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
       smooth: true,
       areaStyle: { opacity: 0.08 },
       data: data.trend.created,
-      color: '#1677ff',
+      color: chartColors().primary,
     },
     {
       name: '完成工单',
@@ -101,11 +105,13 @@ const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
 })
 
 const createPieOption = (data: DashboardMetricsDto): ECOption => ({
+  textStyle: { color: chartColors().text },
   tooltip: { trigger: 'item' },
   legend: {
     orient: 'vertical',
     left: 'left',
     top: 'middle',
+    textStyle: { color: chartColors().text },
   },
   series: [
     {
@@ -119,11 +125,12 @@ const createPieOption = (data: DashboardMetricsDto): ECOption => ({
 })
 
 const createBarOption = (data: DashboardMetricsDto): ECOption => ({
+  textStyle: { color: chartColors().text },
   tooltip: { trigger: 'axis' },
   grid: { left: 50, right: 20, top: 24, bottom: 24 },
   xAxis: {
     type: 'value',
-    splitLine: { lineStyle: { type: 'dashed' } },
+    splitLine: { lineStyle: { type: 'dashed', color: chartColors().border } },
   },
   yAxis: {
     type: 'category',
@@ -204,6 +211,8 @@ watch(
   },
   { deep: true }
 )
+
+watch(() => [themeStore.resolvedMode, themeStore.primaryColor], () => { void nextTick(renderCharts) })
 
 onMounted(() => {
   void fetchMetrics()
@@ -311,7 +320,7 @@ onBeforeUnmount(() => {
 
 .sub-text {
   margin: 0;
-  color: #64748b;
+  color: var(--nova-text-secondary);
 }
 
 .overview-row {

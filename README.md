@@ -1,260 +1,228 @@
 # NovaOps
 
-NovaOps 是一个基于 Vue3 + TypeScript 的中后台项目，包含登录鉴权、权限管理、工单、资产、知识库和数据看板等模块。
-项目以常见中后台场景为核心，覆盖列表查询、状态流转、权限控制和可视化展示等能力。
+NovaOps 是一个面向企业运维场景的多租户管理与 RAG 智能问答平台。项目覆盖认证授权、用户管理、工单、资产、知识库、Agent 对话和数据看板，并支持前端 Mock 演示与 Java 真实后端联调。
 
-当前仓库已经支持两种运行方式：
+## 核心能力
 
-- 前端独立演示：通过 MSW Mock 跑完整前端流程
-- 前后端联调：通过 `backend/` 下的 Java + MySQL 真实后端接管认证与工单模块
-
-如果你准备直接把整套项目跑起来，先看这两份文档：
-
-- [backend/STARTUP_GUIDE.md](/E:/LancerProjects/NovaOps/backend/STARTUP_GUIDE.md)
-- [backend/KNOWN_ISSUES.md](/E:/LancerProjects/NovaOps/backend/KNOWN_ISSUES.md)
+- 多租户隔离：用户、权限、业务数据、知识库向量和 Agent 会话均携带租户上下文。
+- 单身份权限：每个用户绑定一个身份，管理员可维护用户状态、身份和密码。
+- 动态权限：后端下发菜单与权限码，前端实现动态路由和按钮级鉴权。
+- 知识库：支持文档上传、Apache Tika 异步解析、重叠分块、向量化、分块预览、替换与删除。
+- RAG Agent：基于知识库检索生成回答，支持 POST SSE 流式输出、引用校验、历史会话和无依据拒答。
+- 运维业务：提供工单、资产、Dashboard 等常见中后台模块。
+- 双运行模式：可完全使用 MSW Mock，也可连接 Spring Boot、MySQL、Qdrant 与 SiliconFlow。
+- 主题与布局：支持亮色/暗色主题、紧凑模式、动态菜单、多标签页和全局 Agent 浮窗。
 
 ## 技术栈
 
-- Vue 3 + Vite + TypeScript
-- Ant Design Vue
-- Pinia（含本地持久化）
-- Vue Router（含动态路由）
-- Axios
-- ECharts
-- MSW（Mock Service Worker）
-- Spring Boot 3
-- MyBatis
-- MySQL 8
-- ESLint + Prettier + Husky + lint-staged + commitlint
+### 前端
 
-## 项目亮点
+- Vue 3、TypeScript、Vite
+- Ant Design Vue、Pinia、Vue Router
+- Axios、ECharts、MSW
+- ESLint、Prettier、Husky、lint-staged、commitlint
 
-- 完整实现了登录、权限、菜单、业务模块、看板页面这一套中后台基本流程。
-- 做了基础的 RBAC 权限模型（角色 + 权限码），支持页面级和按钮级权限控制。
-- 抽离了通用表格/表单能力，提高了列表页开发效率。
-- 保留了 Mock 与真实后端双模式切换，适合学习前后端联调和渐进式替换。
+### 后端与 AI
 
-## 登录方式
+- Java 17、Spring Boot 3.4、Spring AI
+- MyBatis、MySQL 8、JWT
+- Apache Tika、Qdrant
+- SiliconFlow OpenAI 兼容接口
 
-登录采用「账号 + 身份」模式，账号不存在时系统会自动注册：
-
-- 预置账号（密码统一为 `123456`）：
-  - `admin / 123456` → 管理员
-  - `staff / 123456` → 运维人员
-  - `guest / 123456` → 访客
-- 也可以输入任意新账号并选择一种身份（管理员 / 运维人员 / 访客），首次登录自动创建账号
-
-支持租户切换：
-
-- `Tenant A`
-- `Tenant B`
-
-## 功能模块
-
-### 1. 认证与权限
-
-- 登录、退出、获取用户信息
-- 身份（角色）选择与账号自动注册（`GET /api/auth/roles`）
-- 请求拦截与 token 注入
-- 401 场景下的刷新 token 处理
-- 路由守卫（未登录跳转、无权限拦截）
-- RBAC：`user -> roles -> permissions`
-- 动态菜单 + 动态路由 `addRoute`
-- 按钮级权限控制（指令/组件）
-
-### 2. 基础布局
-
-- 侧边栏菜单（可折叠）
-- 顶部栏（面包屑、租户切换、用户信息）
-- 多标签页（keep-alive）
-
-### 3. 工单模块
-
-- 列表页：筛选、分页、关键字搜索
-- 新建、编辑、指派、关闭等操作（按权限控制）
-- 详情页：状态流转、评论、附件（Mock）
-- CSV 导出（前端生成）
-
-工单相关说明：
-
-- 认证、权限、工单核心接口已支持真实后端
-- 评论、附件也已支持真实后端元数据保存
-- 资产、知识库、Dashboard 当前仍可通过 `partial` Mock 模式继续联调
-
-### 4. 资产模块
-
-- 列表筛选与分页
-- 资产入库、领用、回收、报废等操作
-- 资产和工单的关联展示与跳转
-
-### 5. Dashboard 看板
-
-- 时间范围筛选（近 7 天 / 近 30 天）
-- 工单趋势、分类占比、处理时长等图表
-- 总量、完成率等概览指标卡片
-
-### 6. 知识库模块
-
-- 关键字搜索、标签筛选、分页
-- Markdown 编辑与预览
-- 文章新建/编辑及版本历史
-
-## 权限模型（简化说明）
-
-- `admin`：全部功能
-- `staff`：大部分业务操作
-- `guest`：主要查看权限
-
-权限码示例：
-
-- `ticket:view`、`ticket:create`、`ticket:edit`
-- `asset:view`、`asset:create`、`asset:edit`
-- `kb:view`、`kb:edit`
-
-## 目录结构
+## 项目结构
 
 ```text
-backend/
-  src/main/
-  sql/
-src/
-  api/
-  assets/
-  components/
-    pro-table/
-    pro-form/
-  directives/
-    permission.ts
-  hooks/
-  layout/
-  router/
-  store/
-  utils/
-  views/
-    login/
-    dashboard/
-    ticket/
-    asset/
-    kb/
-  styles/
-  types/
-src/mocks/
+NovaOps/
+├─ backend/
+│  ├─ sql/                         # 初始化与升级脚本
+│  └─ src/main/
+│     ├─ java/com/novaops/backend/
+│     │  ├─ auth/                  # 认证、用户与权限
+│     │  ├─ ticket/                # 工单
+│     │  ├─ kb/                    # 文档解析、分块与检索
+│     │  ├─ agent/                 # RAG 对话与会话
+│     │  └─ common/                # 响应、异常与安全上下文
+│     └─ resources/mapper/         # MyBatis 映射
+├─ src/
+│  ├─ api/                         # 接口客户端
+│  ├─ components/                  # 通用组件与 Agent 浮窗
+│  ├─ composables/                 # 对话等组合式逻辑
+│  ├─ layout/                      # 后台布局
+│  ├─ mocks/                       # MSW 数据与处理器
+│  ├─ router/                      # 静态和动态路由
+│  ├─ store/                       # 用户、主题、标签页、对话状态
+│  ├─ views/                       # 页面模块
+│  └─ utils/                       # 请求、SSE 等工具
+├─ docker-compose.yml              # Qdrant
+└─ .env.example                    # 环境变量示例
 ```
+
+## 环境要求
+
+- Node.js 20+ 与 npm
+- Java 17 与 Maven 3.9+
+- MySQL 8
+- Docker（运行 Qdrant 时需要）
+- SiliconFlow API Key（知识库向量化和 RAG 问答时需要）
 
 ## 快速开始
 
-### 1. 只跑前端 Mock
+### 方式一：前端 Mock 演示
 
 ```bash
 npm install
 npm run dev
 ```
 
-默认地址：`http://127.0.0.1:5173/login`
+默认访问地址：`http://127.0.0.1:5173/login`。
 
-默认 `.env.development` 使用：
+`.env.development` 可配置：
 
-```bash
+```dotenv
 VITE_API_BASE_URL=/api
-VITE_ENABLE_MOCK=partial
+VITE_ENABLE_MOCK=full
 ```
 
-`VITE_ENABLE_MOCK` 支持三种模式：
+`VITE_ENABLE_MOCK` 支持：
 
-- `full`：全部接口走 MSW Mock
-- `partial`：认证与工单走 Java 后端，资产/知识库/看板等未迁移接口继续走 Mock
-- `off`：完全关闭 MSW，所有 `/api` 请求都走真实后端
+- `full`：所有接口使用 MSW。
+- `partial`：已实现的接口访问 Java 后端，其余接口由 MSW 接管。
+- `off`：关闭 MSW，所有 `/api` 请求访问真实后端。
 
-### 2. 跑 Java + MySQL 真实后端
+预置账号密码均为 `123456`：
 
-详细流程见：
+| 账号 | 身份 | 用途 |
+| --- | --- | --- |
+| `admin` | 管理员 | 全部功能及用户管理 |
+| `staff` | 运维人员 | 工单、资产和智能问答 |
+| `guest` | 访客 | 授权范围内只读访问 |
 
-- [backend/STARTUP_GUIDE.md](/E:/LancerProjects/NovaOps/backend/STARTUP_GUIDE.md)
+登录页需要选择租户与身份。新账号首次登录时会按所选身份自动创建；已有账号必须选择其绑定身份。
 
-简版步骤如下。
+### 方式二：运行完整服务
 
-1. 创建数据库：
+#### 1. 初始化数据库
+
+创建数据库并导入完整初始化脚本：
 
 ```sql
 CREATE DATABASE novaops DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 ```
 
-2. 执行初始化脚本：
-
 ```bash
 mysql -uroot -p novaops < backend/sql/novaops_init.sql
 ```
 
-如果你用的是 PowerShell，请不要直接用 `<`，改看启动指南里的 `SOURCE` 或管道方式。
+如果数据库来自旧版本，再执行：
 
-3. 在 `backend/src/main/resources/application-local.yml` 里填好你本机 MySQL 的真实账号密码。
+```bash
+mysql -uroot -p novaops < backend/sql/refactor_rag_migration.sql
+```
 
-4. 启动后端：
+#### 2. 启动 Qdrant
+
+```bash
+docker compose up -d qdrant
+```
+
+Qdrant HTTP 与 gRPC 默认端口分别为 `6333` 和 `6334`。
+
+#### 3. 配置环境变量
+
+至少配置数据库、JWT 和 SiliconFlow 密钥。PowerShell 示例：
+
+```powershell
+$env:NOVAOPS_DB_URL="jdbc:mysql://127.0.0.1:3306/novaops?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8"
+$env:NOVAOPS_DB_USERNAME="root"
+$env:NOVAOPS_DB_PASSWORD="你的数据库密码"
+$env:NOVAOPS_JWT_SECRET="请替换为足够长的随机密钥"
+$env:SILICONFLOW_API_KEY="你的 API Key"
+```
+
+可选配置：
+
+```dotenv
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn
+SILICONFLOW_CHAT_MODEL=Qwen/Qwen3-8B
+SILICONFLOW_EMBEDDING_MODEL=BAAI/bge-m3
+QDRANT_BASE_URL=http://localhost:6333
+QDRANT_COLLECTION=novaops_kb
+NOVAOPS_KB_STORAGE=./data/kb
+```
+
+不要提交真实密码、API Key 或本地配置文件。
+
+#### 4. 启动后端
 
 ```bash
 cd backend
-mvn -gs mvn-settings.xml spring-boot:run "-Dspring-boot.run.profiles=local"
+mvn -gs mvn-settings.xml spring-boot:run
 ```
 
-后端默认地址：`http://127.0.0.1:8080`
+后端默认地址：`http://127.0.0.1:8080`。
 
-默认数据库配置可通过环境变量覆盖：
-
-```bash
-NOVAOPS_DB_URL
-NOVAOPS_DB_USERNAME
-NOVAOPS_DB_PASSWORD
-NOVAOPS_JWT_SECRET
-```
-
-5. 启动前端：
+#### 5. 启动前端
 
 ```bash
 npm install
 npm run dev
 ```
 
-Vite 开发服务器会自动把 `/api` 代理到 `http://127.0.0.1:8080`。
+Vite 会将 `/api` 代理到 `http://127.0.0.1:8080`。
 
-## 常用脚本
+## 主要接口
 
-```bash
-npm run dev
-npm run build
-npm run preview
-npm run lint
-npm run format
-```
-
-## 部署
-
-1. 构建项目：
-
-```bash
-npm run build
-```
-
-2. 将 `dist/` 部署到静态服务器（如 Nginx）。
-
-## 当前真实后端已覆盖的接口
+### 认证与用户
 
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `POST /api/auth/switch-tenant`
-- `GET /api/auth/roles`
 - `GET /api/auth/me`
 - `GET /api/auth/menu`
-- `GET /api/tickets`
-- `GET /api/tickets/:id`
-- `POST /api/tickets`
-- `PUT /api/tickets/:id`
-- `POST /api/tickets/:id/actions`
-- `GET /api/tickets/:id/comments`
-- `POST /api/tickets/:id/comments`
-- `POST /api/tickets/:id/attachments`
+- `GET /api/auth/roles`
+- `GET /api/auth/users`
+- `PUT /api/auth/users/{id}/status`
+- `PUT /api/auth/users/{id}/role`
+- `PUT /api/auth/users/{id}/password`
 
-## 后续优化方向
+### 知识库与 Agent
 
-- 接入资产、知识库、Dashboard 的真实后端接口
-- 增加单元测试和 E2E 测试
-- 完善异常监控和埋点统计
+- `GET/POST /api/kb/documents`
+- `GET/PUT/DELETE /api/kb/documents/{id}`
+- `GET /api/kb/documents/{id}/chunks`
+- `POST /api/kb/documents/{id}/replace`
+- `POST /api/agent/chat`（SSE）
+- `GET /api/agent/conversations`
+- `GET /api/agent/conversations/{id}`
+
+### 工单
+
+- `GET/POST /api/tickets`
+- `GET/PUT /api/tickets/{id}`
+- `POST /api/tickets/{id}/actions`
+- `GET/POST /api/tickets/{id}/comments`
+- `POST /api/tickets/{id}/attachments`
+
+## 常用命令
+
+```bash
+npm run dev
+npm run build
+npm run lint
+npm run format
+```
+
+后端验证：
+
+```bash
+cd backend
+mvn test
+```
+
+生产构建生成在 `dist/`，该目录已被 Git 忽略，可部署到 Nginx 等静态服务器。
+
+## 安全说明
+
+- 生产环境必须覆盖默认数据库密码和 `NOVAOPS_JWT_SECRET`。
+- 知识库文件、向量数据、本地环境变量和构建产物均不应提交到仓库。
+- 租户标识以服务端认证上下文为准，不信任客户端自行声明的业务数据归属。

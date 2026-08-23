@@ -1,6 +1,7 @@
 package com.novaops.backend.auth.mapper;
 
 import com.novaops.backend.auth.dto.RoleResponse;
+import com.novaops.backend.auth.dto.UserListItemResponse;
 import com.novaops.backend.auth.model.MenuRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
 import com.novaops.backend.auth.model.TenantRecord;
@@ -38,11 +39,17 @@ public interface AuthMapper {
 
   void insertUser(UserRecord user);
 
-  void insertUserRole(@Param("userId") String userId, @Param("roleId") String roleId);
-
   void insertUserTenant(@Param("userId") String userId, @Param("tenantId") String tenantId);
 
   List<RoleResponse> listRoles();
 
   RoleResponse findRoleById(@Param("roleId") String roleId);
+
+  List<String> listPermissionsByRoleId(@Param("roleId") String roleId);
+  List<UserListItemResponse> listUsers(@Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled, @Param("offset") int offset, @Param("pageSize") int pageSize);
+  long countUsers(@Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled);
+  void updateUserStatus(@Param("userId") String userId, @Param("enabled") Boolean enabled);
+  void updateUserRole(@Param("userId") String userId, @Param("roleId") String roleId);
+  void updateUserPassword(@Param("userId") String userId, @Param("passwordHash") String passwordHash);
+  void revokeRefreshTokens(@Param("userId") String userId);
 }

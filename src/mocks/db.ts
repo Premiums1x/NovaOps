@@ -1,4 +1,4 @@
-import type { RoleDto, TenantInfo, UserProfile } from '@/types/auth'
+import type { RoleDto, TenantInfo, UserListItemDto, UserProfile } from '@/types/auth'
 import type { MenuDataDto, MenuItemDto } from '@/types/menu'
 
 type TenantId = 'tenant-a' | 'tenant-b'
@@ -10,6 +10,8 @@ interface MockUser {
   password: string
   displayName: string
   roles: string[]
+  enabled: boolean
+  createdAt: string
 }
 
 interface SessionPayload {
@@ -29,6 +31,8 @@ const users: Record<string, MockUser> = {
     password: '123456',
     displayName: 'System Admin',
     roles: ['admin'],
+    enabled: true,
+    createdAt: '2026-04-01T08:00:00Z',
   },
   staff: {
     id: 'u-staff',
@@ -36,6 +40,8 @@ const users: Record<string, MockUser> = {
     password: '123456',
     displayName: 'Support Staff',
     roles: ['staff'],
+    enabled: true,
+    createdAt: '2026-04-02T08:00:00Z',
   },
   guest: {
     id: 'u-guest',
@@ -43,6 +49,8 @@ const users: Record<string, MockUser> = {
     password: '123456',
     displayName: 'Read-only Guest',
     roles: ['guest'],
+    enabled: true,
+    createdAt: '2026-04-03T08:00:00Z',
   },
 }
 
@@ -52,9 +60,9 @@ const dynamicUsers = new Map<string, MockUser>()
 let userCounter = 0
 
 export const roles: RoleDto[] = [
-  { id: 'role-admin', code: 'admin', name: '管理员' },
-  { id: 'role-staff', code: 'staff', name: '运维人员' },
-  { id: 'role-guest', code: 'guest', name: '访客' },
+  { id: 'role-admin', code: 'admin', name: '管理员', description: '管理用户、身份、知识库以及全部业务数据', permissions: ['auth:user:manage', 'dashboard:view', 'ticket:view', 'asset:view', 'kb:view', 'kb:edit', 'agent:chat'] },
+  { id: 'role-staff', code: 'staff', name: '运维人员', description: '处理工单、资产与使用智能问答', permissions: ['dashboard:view', 'ticket:view', 'ticket:create', 'asset:view', 'agent:chat'] },
+  { id: 'role-guest', code: 'guest', name: '访客', description: '只读访问授权看板与智能问答', permissions: ['dashboard:view', 'agent:chat'] },
 ]
 
 export const createDynamicUser = (username: string, roleId: string): MockUser => {
@@ -73,6 +81,8 @@ export const createDynamicUser = (username: string, roleId: string): MockUser =>
     password: '123456',
     displayName: username,
     roles: [roleCode],
+    enabled: true,
+    createdAt: new Date().toISOString(),
   }
   dynamicUsers.set(username, user)
   return user
@@ -96,6 +106,8 @@ const permissionMap: Record<string, Record<TenantId, string[]>> = {
       'asset:scrap',
       'kb:view',
       'kb:edit',
+      'auth:user:manage',
+      'agent:chat',
     ],
     'tenant-b': [
       'dashboard:view',
@@ -111,6 +123,8 @@ const permissionMap: Record<string, Record<TenantId, string[]>> = {
       'asset:claim',
       'asset:scrap',
       'kb:edit',
+      'auth:user:manage',
+      'agent:chat',
     ],
   },
   staff: {
@@ -122,14 +136,13 @@ const permissionMap: Record<string, Record<TenantId, string[]>> = {
       'ticket:comment',
       'asset:view',
       'asset:claim',
-      'kb:view',
-      'kb:edit',
+      'agent:chat',
     ],
-    'tenant-b': ['dashboard:view', 'ticket:view', 'ticket:create', 'ticket:comment', 'asset:view', 'kb:view', 'kb:edit'],
+    'tenant-b': ['dashboard:view', 'ticket:view', 'ticket:create', 'ticket:comment', 'asset:view', 'agent:chat'],
   },
   guest: {
-    'tenant-a': ['dashboard:view'],
-    'tenant-b': ['dashboard:view'],
+    'tenant-a': ['dashboard:view','agent:chat'],
+    'tenant-b': ['dashboard:view','agent:chat'],
   },
 }
 
@@ -202,6 +215,7 @@ const menuTemplates: Record<MenuTemplateKey, MenuItemDto[]> = {
         },
       ],
     },
+    { id: 'users', title: '用户与身份', name: 'UserManagement', path: '/system/users', component: 'UserManagementView', icon: 'user', permission: 'auth:user:manage', keepAlive: true },
   ],
   staff: [
     {
@@ -229,25 +243,6 @@ const menuTemplates: Record<MenuTemplateKey, MenuItemDto[]> = {
           path: '/ticket/list',
           component: 'TicketListView',
           permission: 'ticket:view',
-          keepAlive: true,
-        },
-      ],
-    },
-    {
-      id: 'kb',
-      title: '知识库',
-      name: 'KbRoot',
-      path: '/kb',
-      component: 'RouteView',
-      icon: 'kb',
-      children: [
-        {
-          id: 'kb-list',
-          title: '文章列表',
-          name: 'KbList',
-          path: '/kb/list',
-          component: 'KbListView',
-          permission: 'kb:view',
           keepAlive: true,
         },
       ],
@@ -317,13 +312,13 @@ const cloneMenu = (menus: MenuItemDto[]): MenuItemDto[] => {
   }))
 }
 
-const resolveMenusByUser = (username: string, tenantId: string): MenuItemDto[] => {
+const resolveMenusByUser = (username: string): MenuItemDto[] => {
   const user = users[username] || dynamicUsers.get(username)
   const roleCode = user?.roles?.[0]
   if (roleCode === 'guest') {
     return cloneMenu(menuTemplates.guest)
   }
-  if (roleCode === 'staff' || tenantId === 'tenant-b') {
+  if (roleCode === 'staff') {
     return cloneMenu(menuTemplates.staff)
   }
   return cloneMenu(menuTemplates.full)
@@ -331,6 +326,32 @@ const resolveMenusByUser = (username: string, tenantId: string): MenuItemDto[] =
 
 export const getUser = (username: string) => {
   return users[username] || dynamicUsers.get(username)
+}
+
+const allUsers = () => [...Object.values(users), ...dynamicUsers.values()]
+
+export const listMockUsers = (): UserListItemDto[] => allUsers().map((user) => {
+  const role = roles.find((item) => item.code === user.roles[0]) || roles[2]!
+  return { id: user.id, username: user.username, displayName: user.displayName, roleId: role.id, roleCode: role.code, roleName: role.name, enabled: user.enabled, createdAt: user.createdAt }
+})
+
+export const setMockUserStatus = (id: string, enabled: boolean) => {
+  const user = allUsers().find((item) => item.id === id)
+  if (user) user.enabled = enabled
+  return Boolean(user)
+}
+
+export const setMockUserRole = (id: string, roleId: string) => {
+  const user = allUsers().find((item) => item.id === id)
+  const role = roles.find((item) => item.id === roleId)
+  if (user && role) user.roles = [role.code]
+  return Boolean(user && role)
+}
+
+export const setMockUserPassword = (id: string, password: string) => {
+  const user = allUsers().find((item) => item.id === id)
+  if (user) user.password = password
+  return Boolean(user)
 }
 
 export const buildSession = (payload: SessionPayload) => {
@@ -414,7 +435,7 @@ export const buildMenuData = (username: string, tenantId: string): MenuDataDto =
   const roleCode = user?.roles?.[0] || 'admin'
   const perms = resolvePermissions(username, roleCode, currentTenantId)
   return {
-    menus: resolveMenusByUser(username, currentTenantId),
+    menus: resolveMenusByUser(username),
     permissions: perms,
   }
 }

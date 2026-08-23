@@ -4,15 +4,18 @@ import com.novaops.backend.common.exception.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
+import com.novaops.backend.auth.service.AuthService;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 @Component
 public class AuthInterceptor implements HandlerInterceptor {
 
   private final JwtService jwtService;
+  private final AuthService authService;
 
-  public AuthInterceptor(JwtService jwtService) {
+  public AuthInterceptor(JwtService jwtService, AuthService authService) {
     this.jwtService = jwtService;
+    this.authService = authService;
   }
 
   @Override
@@ -23,7 +26,9 @@ public class AuthInterceptor implements HandlerInterceptor {
     }
 
     String token = authorization.substring("Bearer ".length()).trim();
-    RequestContext.set(jwtService.parseAccessToken(token));
+    CurrentSession session = jwtService.parseAccessToken(token);
+    authService.requireEnabledUser(session.getUserId());
+    RequestContext.set(session);
     return true;
   }
 
