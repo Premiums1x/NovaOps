@@ -39,14 +39,10 @@ export const staticRoutes: RouteRecordRaw[] = [
         },
       },
       {
-        path: '/kb/edit/:id?',
-        name: 'KbEdit',
-        component: () => import('@/views/kb/edit.vue'),
-        meta: {
-          title: '知识库编辑',
-          permission: 'kb:view',
-          keepAlive: false,
-        },
+        path: '/agent/chat',
+        name: 'AgentChat',
+        component: () => import('@/views/agent/chat.vue'),
+        meta: { title: '智能问答', permission: 'agent:chat', keepAlive: true },
       },
     ],
   },

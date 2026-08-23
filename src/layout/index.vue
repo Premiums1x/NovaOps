@@ -11,11 +11,14 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ToolOutlined,
+  TeamOutlined,
 } from '@ant-design/icons-vue'
 import { useAppStore } from '@/store/app'
 import { useAuthStore } from '@/store/auth'
 import { usePermissionStore } from '@/store/permission'
 import type { MenuItemDto } from '@/types/menu'
+import ThemeSettings from '@/components/theme/ThemeSettings.vue'
+import FloatChat from '@/components/agent/FloatChat.vue'
 
 type MenuItem = Required<MenuProps>['items'][number]
 
@@ -33,6 +36,7 @@ const iconMap = {
   ticket: ToolOutlined,
   asset: DesktopOutlined,
   kb: BookOutlined,
+  user: TeamOutlined,
   default: AppstoreOutlined,
 }
 
@@ -82,9 +86,6 @@ const selectedMenuPath = computed(() => {
   }
   if (route.path.startsWith('/asset/detail')) {
     return '/asset/list'
-  }
-  if (route.path.startsWith('/kb/edit')) {
-    return '/kb/list'
   }
   return route.path
 })
@@ -170,6 +171,10 @@ const handleTenantChange = async (tenantId: string) => {
 
 // 用户下拉操作：目前只有退出登录
 const handleUserAction = async ({ key }: { key: string }) => {
+  if (key === 'agent') {
+    await router.push('/agent/chat')
+    return
+  }
   if (key !== 'logout') {
     return
   }
@@ -211,6 +216,7 @@ const handleUserAction = async ({ key }: { key: string }) => {
         </div>
         <div class="header-right">
           <a-space>
+            <ThemeSettings />
             <a-select
               :value="authStore.tenantId"
               style="width: 160px"
@@ -223,6 +229,7 @@ const handleUserAction = async ({ key }: { key: string }) => {
               </a>
               <template #overlay>
                 <a-menu @click="handleUserAction">
+                  <a-menu-item key="agent">智能问答</a-menu-item>
                   <a-menu-item key="logout">退出登录</a-menu-item>
                 </a-menu>
               </template>
@@ -257,6 +264,7 @@ const handleUserAction = async ({ key }: { key: string }) => {
         </section>
       </a-layout-content>
     </a-layout>
+    <FloatChat />
   </a-layout>
 </template>
 
@@ -280,11 +288,11 @@ const handleUserAction = async ({ key }: { key: string }) => {
 }
 
 .layout-header {
-  background: #fff;
+  background: var(--nova-surface);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #edf1f5;
+  border-bottom: 1px solid var(--nova-border);
   padding: 0 16px 0 8px;
 }
 
@@ -299,15 +307,16 @@ const handleUserAction = async ({ key }: { key: string }) => {
 }
 
 .user-link {
-  color: #1f2937;
+  color: var(--nova-text);
 }
 
 .layout-content {
   padding: 12px;
+  background: var(--nova-bg);
 }
 
 .tabs-wrap {
-  background: #fff;
+  background: var(--nova-surface);
   border-radius: 8px;
   padding: 8px 12px 0;
 }

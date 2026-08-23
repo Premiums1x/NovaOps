@@ -13,6 +13,7 @@ const routeComponentMap: Record<string, RouteComponentLoader> = {
   TicketDetailView: () => import('@/views/ticket/detail.vue'),
   AssetListView: () => import('@/views/asset/list.vue'),
   KbListView: () => import('@/views/kb/list.vue'),
+  UserManagementView: () => import('@/views/system/users.vue'),
 }
 
 //后端菜单数据里，有子菜单的父级节点 component 字段存的是 'RouteView'，

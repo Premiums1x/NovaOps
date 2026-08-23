@@ -24,6 +24,27 @@ export interface RoleDto {
   id: string
   code: string
   name: string
+  description: string
+  permissions: string[]
+}
+
+export interface UserListItemDto {
+  id: string
+  username: string
+  displayName: string
+  roleId: string
+  roleCode: string
+  roleName: string
+  enabled: boolean
+  createdAt: string
+}
+
+export interface UserListQueryDto {
+  page: number
+  pageSize: number
+  keyword?: string
+  roleId?: string
+  enabled?: boolean
 }
 
 export interface AuthTokenDto {

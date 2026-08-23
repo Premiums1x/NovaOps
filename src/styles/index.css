@@ -3,6 +3,30 @@
   color: #111827;
   background: #f3f5f8;
   line-height: 1.5;
+  --nova-primary: #1677ff;
+  --nova-bg: #f3f5f8;
+  --nova-surface: #ffffff;
+  --nova-surface-elevated: #ffffff;
+  --nova-text: #172033;
+  --nova-text-secondary: #667085;
+  --nova-border: #e6eaf0;
+  --nova-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme='dark'] {
+  --nova-bg: #0f141c;
+  --nova-surface: #161d27;
+  --nova-surface-elevated: #1d2633;
+  --nova-text: #eef2f8;
+  --nova-text-secondary: #9ca9ba;
+  --nova-border: #2b3645;
+  --nova-shadow: 0 12px 36px rgba(0, 0, 0, 0.32);
+}
+
+body {
+  color: var(--nova-text);
+  background: var(--nova-bg);
+  transition: color 160ms ease, background-color 160ms ease;
 }
 
 * {

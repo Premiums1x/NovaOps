@@ -7,21 +7,31 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# 项目笔记
-refactor.md
+# Markdown 文档（仅提交根目录 README）
+*.md
+!/README.md
 
 #前端&打包
 node_modules
 dist
 dist-ssr
+coverage
+.vite
+.cache
+.eslintcache
+*.tsbuildinfo
 *.local
 
 #后端
 backend/target
 backend/src/main/resources/application-local.yml
 backend/src/main/resources/application-*.local.yml
-backend/RuntimeNotes.md
-backend/BACKEND_GUIDE.md
+backend/data/
+
+# 运行期数据（知识库上传、向量库本地挂载）
+/data/
+/uploads/
+/qdrant_storage/
 
 # 本地环境变量/私密配置
 .env
@@ -30,6 +40,10 @@ backend/BACKEND_GUIDE.md
 backend/.env
 backend/.env.*
 *.iml
+*.tmp
+*.temp
+*.bak
+*.pid
 
 
 # Editor directories and files

@@ -1,0 +1,81 @@
+<script setup lang="ts">
+import { onMounted, reactive, ref } from 'vue'
+import { Modal, message, type TableProps } from 'ant-design-vue'
+import { getRolesApi, getUsersApi, resetUserPasswordApi, updateUserRoleApi, updateUserStatusApi } from '@/api/auth'
+import type { RoleDto, UserListItemDto } from '@/types/auth'
+
+defineOptions({ name: 'UserManagement' })
+const loading = ref(false)
+const users = ref<UserListItemDto[]>([])
+const roles = ref<RoleDto[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(10)
+const filters = reactive<{ keyword: string; roleId?: string; enabled?: boolean }>({ keyword: '' })
+const passwordOpen = ref(false)
+const selectedUser = ref<UserListItemDto>()
+const password = ref('123456')
+const columns: TableProps['columns'] = [
+  { title: '账号', dataIndex: 'username', key: 'username' },
+  { title: '显示名称', dataIndex: 'displayName', key: 'displayName' },
+  { title: '身份', key: 'role', width: 180 },
+  { title: '状态', key: 'enabled', width: 100 },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 180 },
+  { title: '操作', key: 'actions', width: 220 },
+]
+
+const fetchUsers = async () => {
+  loading.value = true
+  try {
+    const data = await getUsersApi({ page: page.value, pageSize: pageSize.value, keyword: filters.keyword || undefined, roleId: filters.roleId, enabled: filters.enabled })
+    users.value = data.list
+    total.value = data.total
+  } finally { loading.value = false }
+}
+const search = () => { page.value = 1; void fetchUsers() }
+const changeStatus = (user: UserListItemDto) => {
+  Modal.confirm({ title: user.enabled ? '确认禁用该用户？' : '确认启用该用户？', content: user.enabled ? '禁用后该用户当前访问将立即失效。' : undefined, async onOk() { await updateUserStatusApi(user.id, !user.enabled); message.success('用户状态已更新'); await fetchUsers() } })
+}
+const changeRole = async (user: UserListItemDto, roleId: string) => {
+  await updateUserRoleApi(user.id, roleId); message.success('身份已调整并即时生效'); await fetchUsers()
+}
+const openReset = (user: UserListItemDto) => { selectedUser.value = user; password.value = '123456'; passwordOpen.value = true }
+const resetPassword = async () => {
+  if (!selectedUser.value || password.value.length < 6) return message.warning('密码至少 6 位')
+  await resetUserPasswordApi(selectedUser.value.id, password.value); passwordOpen.value = false; message.success('密码已重置')
+}
+
+onMounted(async () => { roles.value = await getRolesApi(); await fetchUsers() })
+</script>
+
+<template>
+  <div class="user-page">
+    <a-card title="身份目录" class="role-card">
+      <a-row :gutter="16">
+        <a-col v-for="role in roles" :key="role.id" :xs="24" :lg="8">
+          <a-card size="small" class="role-item"><a-statistic :title="role.name" :value="role.permissions.length" suffix="项权限" /><p>{{ role.description }}</p><a-space wrap><a-tag v-for="code in role.permissions" :key="code">{{ code }}</a-tag></a-space></a-card>
+        </a-col>
+      </a-row>
+    </a-card>
+    <a-card title="用户管理">
+      <a-form layout="inline" class="filters">
+        <a-form-item><a-input v-model:value="filters.keyword" allow-clear placeholder="搜索账号或名称" @press-enter="search" /></a-form-item>
+        <a-form-item label="身份"><a-select v-model:value="filters.roleId" allow-clear style="width: 150px" :options="roles.map(r => ({ label: r.name, value: r.id }))" /></a-form-item>
+        <a-form-item label="状态"><a-select v-model:value="filters.enabled" allow-clear style="width: 120px" :options="[{ label: '启用', value: true }, { label: '禁用', value: false }]" /></a-form-item>
+        <a-form-item><a-button type="primary" @click="search">查询</a-button></a-form-item>
+      </a-form>
+      <a-table :columns="columns" :data-source="users" :loading="loading" row-key="id" :pagination="{ current: page, pageSize, total, showSizeChanger: true }" @change="(p) => { page = p.current || 1; pageSize = p.pageSize || 10; fetchUsers() }">
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'role'"><a-select :value="record.roleId" style="width: 140px" :options="roles.map(r => ({ label: r.name, value: r.id }))" @change="(value: string) => changeRole(record as UserListItemDto, value)" /></template>
+          <template v-else-if="column.key === 'enabled'"><a-tag :color="record.enabled ? 'success' : 'error'">{{ record.enabled ? '启用' : '禁用' }}</a-tag></template>
+          <template v-else-if="column.key === 'actions'"><a-space><a-button size="small" @click="changeStatus(record as UserListItemDto)">{{ record.enabled ? '禁用' : '启用' }}</a-button><a-button size="small" @click="openReset(record as UserListItemDto)">重置密码</a-button></a-space></template>
+        </template>
+      </a-table>
+    </a-card>
+    <a-modal v-model:open="passwordOpen" title="重置密码" ok-text="确认重置" @ok="resetPassword"><a-input-password v-model:value="password" placeholder="至少 6 位" /></a-modal>
+  </div>
+</template>
+
+<style scoped>
+.user-page { display: grid; gap: 16px; }.role-item { height: 100%; }.role-item p { min-height: 44px; color: var(--nova-text-secondary); }.filters { margin-bottom: 18px; }
+</style>
