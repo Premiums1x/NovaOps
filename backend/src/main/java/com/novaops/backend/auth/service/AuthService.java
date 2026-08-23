@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
@@ -44,16 +45,24 @@ public class AuthService {
     this.jwtService = jwtService;
   }
 
+  @Transactional
   public LoginResponse login(LoginRequest request) {
     UserRecord user = authMapper.findUserByUsername(request.getUsername());
 
     String tenantId = StringUtils.hasText(request.getTenantId()) ? request.getTenantId() : "tenant-a";
 
     if (user == null) {
-      // 用户不存在 → 自动创建
+      // 用户不存在 → 自助注册。管理员账号不允许自助创建（防止任何人
+      // 直接注册出 admin 身份），租户必须是系统里真实存在的租户
       RoleResponse role = authMapper.findRoleById(request.getRoleId());
       if (role == null) {
         throw new BusinessException(403, "身份不存在");
+      }
+      if ("admin".equals(role.getCode())) {
+        throw new BusinessException(403, "管理员账号不支持自助注册，请联系系统管理员创建");
+      }
+      if (authMapper.findTenantById(tenantId) == null) {
+        throw new BusinessException(403, "租户不存在");
       }
       user = createUser(request.getUsername(), request.getPassword(), request.getUsername(), tenantId, role.getId());
     } else {
@@ -62,12 +71,12 @@ public class AuthService {
       }
       // 用户存在 → 校验密码
       if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-        throw new BusinessException(403, "密码错误");
+        throw new BusinessException(403, "账号或密码错误");
       }
       // 校验租户
       validateTenantAccess(user.getId(), tenantId);
-      // 校验角色
-      if (!userHasRole(user.getId(), request.getRoleId())) {
+      // 校验角色：用户绑定唯一身份，直接比对 roleId
+      if (!user.getRoleId().equals(request.getRoleId())) {
         throw new BusinessException(403, "身份不匹配");
       }
     }
@@ -190,6 +199,13 @@ public class AuthService {
     requireAdmin(session);
   }
 
+  /** 校验当前会话在当前租户下是否持有权限码，供无法用注解表达的场景（如工单按动作细分） */
+  public void requirePermission(CurrentSession session, String code) {
+    if (!authMapper.listPermissions(session.getUserId(), session.getTenantId()).contains(code)) {
+      throw new BusinessException(403, "无权限执行该操作");
+    }
+  }
+
   private LoginResponse issueLoginSession(UserRecord user, String tenantId) {
     String refreshToken = IdGenerator.randomId("rt");
     LocalDateTime expiresAt = LocalDateTime.now().plusDays(jwtService.getRefreshTokenExpireDays());
@@ -217,13 +233,6 @@ public class AuthService {
     if (authMapper.countUserTenant(userId, tenantId) <= 0) {
       throw new BusinessException(403, "租户无权限访问");
     }
-  }
-
-  private boolean userHasRole(String userId, String roleId) {
-    List<String> roleIds = authMapper.listRolesByUserId(userId);
-    // listRolesByUserId 返回的是 role code，需要通过 roleId 查出 code 再比较
-    RoleResponse role = authMapper.findRoleById(roleId);
-    return role != null && roleIds.contains(role.getCode());
   }
 
   private UserRecord createUser(String username, String password, String displayName, String tenantId, String roleId) {

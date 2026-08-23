@@ -44,7 +44,7 @@ const handleLogin = async () => {
       <div class="mobile-brand">NovaOps</div>
       <a-card class="login-card" :bordered="false">
         <header class="login-heading"><span class="eyebrow">WELCOME BACK</span><h2>登录 NovaOps</h2><p>使用您的企业账号继续</p></header>
-        <a-alert type="info" show-icon message="若账号不存在，系统将自动为您创建" class="login-alert" />
+        <a-alert type="info" show-icon message="若账号不存在，将按所选身份自动创建（管理员除外）" class="login-alert" />
         <a-form layout="vertical" :model="formState" @finish="handleLogin">
           <a-form-item label="账号" name="username" :rules="[{ required: true, message: '请输入账号' }]">
             <a-input v-model:value="formState.username" placeholder="请输入账号" />

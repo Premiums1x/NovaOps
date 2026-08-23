@@ -22,6 +22,8 @@ public interface AuthMapper {
 
   List<TenantRecord> listTenantsByUserId(@Param("userId") String userId);
 
+  TenantRecord findTenantById(@Param("tenantId") String tenantId);
+
   int countUserTenant(@Param("userId") String userId, @Param("tenantId") String tenantId);
 
   List<MenuRecord> listMenusByScope(@Param("menuScope") String menuScope);

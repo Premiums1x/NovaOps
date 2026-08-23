@@ -97,7 +97,7 @@ VITE_ENABLE_MOCK=full
 | `staff` | 运维人员 | 工单、资产和智能问答 |
 | `guest` | 访客 | 授权范围内只读访问 |
 
-登录页需要选择租户与身份。新账号首次登录时会按所选身份自动创建；已有账号必须选择其绑定身份。
+登录页需要选择租户与身份。新账号首次登录时会按所选身份自动创建（管理员身份不支持自助注册，管理员账号请通过初始化脚本或已有管理员维护）；已有账号必须选择其绑定身份。
 
 ### 方式二：运行完整服务
 
@@ -129,7 +129,7 @@ Qdrant HTTP 与 gRPC 默认端口分别为 `6333` 和 `6334`。
 
 #### 3. 配置环境变量
 
-至少配置数据库、JWT 和 SiliconFlow 密钥。PowerShell 示例：
+至少配置数据库、JWT 和 SiliconFlow 密钥。`NOVAOPS_JWT_SECRET` 没有默认值，缺失或长度不足 32 字节时后端会拒绝启动。PowerShell 示例：
 
 ```powershell
 $env:NOVAOPS_DB_URL="jdbc:mysql://127.0.0.1:3306/novaops?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8"
@@ -212,11 +212,11 @@ npm run lint
 npm run format
 ```
 
-后端验证：
+后端验证（单元测试覆盖登录安全逻辑、自助注册约束、权限码校验、JWT 密钥与工单 ID 生成）：
 
 ```bash
 cd backend
-mvn test
+mvn -gs mvn-settings.xml test
 ```
 
 生产构建生成在 `dist/`，该目录已被 Git 忽略，可部署到 Nginx 等静态服务器。

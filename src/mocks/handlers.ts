@@ -119,18 +119,21 @@ export const handlers = [
 
     let user = getUser(payload.username)
     if (!user) {
-      // 用户不存在 → 自动创建(与后端行为一致:身份不存在则拒绝)
+      // 用户不存在 → 自动创建（与后端行为一致：管理员身份不允许自助注册）
       if (!payload.roleId) {
         return fail(403, '身份不能为空')
       }
       if (!roles.some(r => r.id === payload.roleId)) {
         return fail(403, '身份不存在')
       }
+      if (payload.roleId === 'role-admin') {
+        return fail(403, '管理员账号不支持自助注册，请联系系统管理员创建')
+      }
       user = createDynamicUser(payload.username, payload.roleId)
     } else {
       // 用户存在 → 校验密码
       if (payload.password !== user.password) {
-        return fail(403, '密码错误')
+        return fail(403, '账号或密码错误')
       }
       if (!user.enabled) return fail(403, '账号已被禁用')
     }

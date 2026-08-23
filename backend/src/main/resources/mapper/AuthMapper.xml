@@ -46,6 +46,13 @@
     order by t.sort_order asc, t.id asc
   </select>
 
+  <select id="findTenantById" resultType="com.novaops.backend.auth.model.TenantRecord">
+    select id, name
+    from sys_tenant
+    where id = #{tenantId}
+    limit 1
+  </select>
+
   <select id="countUserTenant" resultType="int">
     select count(1)
     from sys_user_tenant

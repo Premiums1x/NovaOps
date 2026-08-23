@@ -20,6 +20,9 @@ public class AuthInterceptor implements HandlerInterceptor {
 
   @Override
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+    // 防御：容器线程池复用时，先清掉可能残留的上一请求会话
+    RequestContext.clear();
+
     String authorization = request.getHeader("Authorization");
     if (authorization == null || !authorization.startsWith("Bearer ")) {
       throw new BusinessException(401, "token 无效");
