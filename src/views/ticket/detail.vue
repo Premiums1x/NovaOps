@@ -197,8 +197,10 @@ onMounted(() => {
               关闭
             </a-button>
           </Permission>
-          <a-button size="small" :loading="actionLoading" @click="doAction('advance')">推进状态</a-button>
-          <a-button size="small" :loading="actionLoading" @click="doAction('reject')">驳回</a-button>
+          <Permission code="ticket:advance">
+            <a-button size="small" :loading="actionLoading" @click="doAction('advance')">推进状态</a-button>
+            <a-button size="small" :loading="actionLoading" @click="doAction('reject')">驳回</a-button>
+          </Permission>
         </a-space>
       </template>
 

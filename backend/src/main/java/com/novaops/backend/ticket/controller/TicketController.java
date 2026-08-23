@@ -3,6 +3,7 @@ package com.novaops.backend.ticket.controller;
 import com.novaops.backend.common.api.ApiResponse;
 import com.novaops.backend.common.api.PageResult;
 import com.novaops.backend.common.security.RequestContext;
+import com.novaops.backend.common.security.RequirePermission;
 import com.novaops.backend.ticket.dto.CreateCommentRequest;
 import com.novaops.backend.ticket.dto.CreateTicketRequest;
 import com.novaops.backend.ticket.dto.TicketActionRequest;
@@ -36,41 +37,49 @@ public class TicketController {
   }
 
   @GetMapping
+  @RequirePermission("ticket:view")
   public ApiResponse<PageResult<TicketListItemResponse>> list(@ModelAttribute TicketListQuery query) {
     return ApiResponse.success(ticketService.list(RequestContext.getRequired(), query));
   }
 
   @GetMapping("/{id}")
+  @RequirePermission("ticket:view")
   public ApiResponse<TicketDetailResponse> detail(@PathVariable("id") String id) {
     return ApiResponse.success(ticketService.detail(RequestContext.getRequired(), id));
   }
 
   @PostMapping
+  @RequirePermission("ticket:create")
   public ApiResponse<TicketDetailResponse> create(@Valid @RequestBody CreateTicketRequest request) {
     return ApiResponse.success(ticketService.create(RequestContext.getRequired(), request), "工单创建成功");
   }
 
   @PutMapping("/{id}")
-  public ApiResponse<TicketDetailResponse> update(@PathVariable("id") String id, @RequestBody UpdateTicketRequest request) {
+  @RequirePermission("ticket:edit")
+  public ApiResponse<TicketDetailResponse> update(@PathVariable("id") String id, @Valid @RequestBody UpdateTicketRequest request) {
     return ApiResponse.success(ticketService.update(RequestContext.getRequired(), id, request), "工单更新成功");
   }
 
+  // 工单流转按动作细分权限（assign/transfer/close/advance），在 Service 内校验
   @PostMapping("/{id}/actions")
   public ApiResponse<TicketDetailResponse> action(@PathVariable("id") String id, @Valid @RequestBody TicketActionRequest request) {
     return ApiResponse.success(ticketService.action(RequestContext.getRequired(), id, request), "工单流转成功");
   }
 
   @GetMapping("/{id}/comments")
+  @RequirePermission("ticket:view")
   public ApiResponse<List<TicketCommentResponse>> comments(@PathVariable("id") String id) {
     return ApiResponse.success(ticketService.comments(RequestContext.getRequired(), id));
   }
 
   @PostMapping("/{id}/comments")
+  @RequirePermission("ticket:comment")
   public ApiResponse<TicketCommentResponse> createComment(@PathVariable("id") String id, @Valid @RequestBody CreateCommentRequest request) {
     return ApiResponse.success(ticketService.createComment(RequestContext.getRequired(), id, request), "评论创建成功");
   }
 
   @PostMapping("/{id}/attachments")
+  @RequirePermission("ticket:comment")
   public ApiResponse<TicketAttachmentResponse> uploadAttachment(
       @PathVariable("id") String id,
       @Valid @RequestBody UploadAttachmentRequest request

@@ -16,3 +16,11 @@ create table agent_conversation (id varchar(64) primary key,tenant_id varchar(64
 create table agent_message (id varchar(64) primary key,conversation_id varchar(64) not null,role varchar(16) not null,content mediumtext not null,citations_json text null,validation_passed tinyint null,created_at datetime not null default current_timestamp,index idx_agent_message_conversation(conversation_id,created_at));
 
 -- 验证所有用户均已迁移到单身份后再执行：drop table sys_user_role;
+
+-- 2026-08 增量：工单流转动作细分为独立权限码（推进/驳回），管理员与运维人员默认持有
+insert into sys_permission(id,code,name) values ('perm-ticket-advance','ticket:advance','推进或驳回工单');
+insert into sys_role_permission(role_id,permission_id,tenant_id)
+select rp.role_id,'perm-ticket-advance',rp.tenant_id
+from (select distinct role_id,tenant_id from sys_role_permission where permission_id='perm-ticket-comment') rp
+inner join sys_role r on r.id=rp.role_id
+where r.code in ('admin','staff');

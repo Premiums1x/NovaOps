@@ -19,7 +19,12 @@ public class JwtService {
 
   public JwtService(SecurityProperties securityProperties) {
     this.securityProperties = securityProperties;
-    this.secretKey = Keys.hmacShaKeyFor(securityProperties.getJwtSecret().getBytes(StandardCharsets.UTF_8));
+    // HMAC-SHA256 密钥至少 32 字节；空密钥或弱密钥在启动期直接失败，而不是带病签发 token
+    String secret = securityProperties.getJwtSecret();
+    if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+      throw new IllegalStateException("NOVAOPS_JWT_SECRET 未配置或长度不足 32 字节，拒绝启动");
+    }
+    this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
   }
 
   public String createAccessToken(CurrentSession session) {
