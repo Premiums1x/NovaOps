@@ -30,6 +30,15 @@ public class GlobalExceptionHandler {
     return ResponseEntity.ok(ApiResponse.failure(400, message.isBlank() ? "请求参数不合法" : message));
   }
 
+  // @ModelAttribute + @Valid 的 query 参数校验失败走 BindException（如分页超上限）
+  @ExceptionHandler(org.springframework.validation.BindException.class)
+  public ResponseEntity<ApiResponse<Object>> handleBindException(org.springframework.validation.BindException exception) {
+    String message = exception.getFieldErrors().stream()
+        .map(FieldError::getDefaultMessage)
+        .collect(Collectors.joining("；"));
+    return ResponseEntity.ok(ApiResponse.failure(400, message.isBlank() ? "请求参数不合法" : message));
+  }
+
   @ExceptionHandler(ConstraintViolationException.class)
   public ResponseEntity<ApiResponse<Object>> handleConstraintViolation(ConstraintViolationException exception) {
     return ResponseEntity.ok(ApiResponse.failure(400, exception.getMessage()));
