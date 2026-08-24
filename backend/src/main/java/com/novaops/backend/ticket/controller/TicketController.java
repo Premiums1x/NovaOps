@@ -38,7 +38,7 @@ public class TicketController {
 
   @GetMapping
   @RequirePermission("ticket:view")
-  public ApiResponse<PageResult<TicketListItemResponse>> list(@ModelAttribute TicketListQuery query) {
+  public ApiResponse<PageResult<TicketListItemResponse>> list(@Valid @ModelAttribute TicketListQuery query) {
     return ApiResponse.success(ticketService.list(RequestContext.getRequired(), query));
   }
 
