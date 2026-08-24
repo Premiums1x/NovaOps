@@ -1,3 +1,4 @@
+SET NAMES utf8mb4;
 drop table if exists biz_ticket_attachment;
 drop table if exists kb_chunk;
 drop table if exists kb_document;
