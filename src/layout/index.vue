@@ -16,6 +16,7 @@ import {
 import { useAppStore } from '@/store/app'
 import { useAuthStore } from '@/store/auth'
 import { usePermissionStore } from '@/store/permission'
+import request from '@/utils/request'
 import type { MenuItemDto } from '@/types/menu'
 import ThemeSettings from '@/components/theme/ThemeSettings.vue'
 import FloatChat from '@/components/agent/FloatChat.vue'
@@ -178,6 +179,8 @@ const handleUserAction = async ({ key }: { key: string }) => {
   if (key !== 'logout') {
     return
   }
+  // 先取消所有在途请求再清状态，避免残留请求返回 401 又把会话"救活"
+  request.cancelAll()
   authStore.logout()
   permissionStore.resetDynamicRoutes(router)
   appStore.resetTabs()

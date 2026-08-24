@@ -60,11 +60,13 @@ const flushRefreshQueue = (error: unknown, token = '') => {
   refreshQueue.length = 0
 }
 
-//拿到请求详细配置信息
+//拿到请求详细配置信息；末尾拼接自增序号，
+//避免同毫秒发出的两个同 URL 请求生成相同 id 导致先到的请求无法取消
+let requestSequence = 0
 const getRequestId = (config: RequestConfig) => {
   const method = (config.method || 'get').toUpperCase()
   const url = config.url || ''
-  return config.requestId || `${method}:${url}:${Date.now()}`
+  return config.requestId || `${method}:${url}:${Date.now()}:${requestSequence++}`
 }
 
 //请求完成后，无论失败/成功，都不再需要controller去取消请求
@@ -129,11 +131,21 @@ const setAuthorizationHeader = (config: RequestConfig, accessToken: string) => {
   }
 }
 
+//会话彻底失效时的兜底跳转：带上当前位置，登录成功后能回到原页面
+const redirectToLogin = () => {
+  const current = window.location.pathname + window.location.search
+  if (current.startsWith('/login')) {
+    window.location.replace('/login')
+    return
+  }
+  window.location.replace(`/login?redirect=${encodeURIComponent(current)}`)
+}
+
 const handleUnauthorized = async (config: RequestConfig) => {
   if (config.skipAuthRefresh || config._retry) {
     await clearAuthState()//async 函数，里面有 await import(...) 操作。必须等它做完，store 才真正清干净了
     clearTokens()
-    window.location.replace('/login')
+    redirectToLogin()
     //这个函数是 async 的，async 函数永远返回 Promise
     //认证失败,把这个错误抛给业务层去处理。
     return Promise.reject(new Error('Unauthorized'))
@@ -184,7 +196,7 @@ const handleUnauthorized = async (config: RequestConfig) => {
     flushRefreshQueue(error)//全部拒绝请求
     await clearAuthState()
     clearTokens()
-    window.location.replace('/login')
+    redirectToLogin()
     throw error
   } finally {
     isRefreshing = false

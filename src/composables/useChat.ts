@@ -4,9 +4,12 @@ import { useChatStore } from '@/store/chat'
 import { streamSse } from '@/utils/sse'
 import type { ChatMessageDto, CitationDto } from '@/types/agent'
 
+// 模块级共享：独立对话页与全局浮窗同时挂载时，"停止"按钮必须能
+// 中断当前真正在跑的那一条流，而不是各自实例里那个已失效的引用
+let sharedController: AbortController | undefined
+
 export const useChat = () => {
   const store = useChatStore()
-  let controller: AbortController | undefined
 
   const send = async (content: string) => {
     const question = content.trim()
@@ -24,7 +27,7 @@ export const useChat = () => {
       citations: [] as CitationDto[],
     })
     store.messages.push(assistant)
-    controller = new AbortController()
+    sharedController = new AbortController()
 
     try {
       await streamSse(
@@ -37,7 +40,7 @@ export const useChat = () => {
           if (event === 'meta') assistant.validationPassed = Boolean(data.validationPassed)
           if (event === 'error') throw new Error(String(data.message || '问答失败'))
         },
-        controller.signal,
+        sharedController.signal,
       )
       await store.loadConversations()
     } catch (error) {
@@ -48,11 +51,11 @@ export const useChat = () => {
       }
     } finally {
       store.loading = false
-      controller = undefined
+      sharedController = undefined
     }
   }
 
-  const stop = () => controller?.abort()
+  const stop = () => sharedController?.abort()
   onBeforeUnmount(stop)
   return { store, send, stop }
 }

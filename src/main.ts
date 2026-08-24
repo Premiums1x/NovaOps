@@ -5,7 +5,6 @@ import App from './App.vue'
 import router from '@/router'
 import { pinia } from '@/store'
 import { setupAntd } from '@/plugins/antd'
-import { permissionDirective } from '@/directives/permission'
 import Permission from '@/components/Permission.vue'
 
 const enableMock = async () => {
@@ -26,7 +25,6 @@ const bootstrap = async () => {
   setupAntd(app)
   app.use(pinia)
   app.use(router)
-  app.directive('permission', permissionDirective)
   app.component('Permission', Permission)
   app.mount('#app')
 }
