@@ -48,10 +48,12 @@ public interface AuthMapper {
   RoleResponse findRoleById(@Param("roleId") String roleId);
 
   List<String> listPermissionsByRoleId(@Param("roleId") String roleId);
-  List<UserListItemResponse> listUsers(@Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled, @Param("offset") int offset, @Param("pageSize") int pageSize);
-  long countUsers(@Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled);
+  List<UserListItemResponse> listUsers(@Param("tenantId") String tenantId, @Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled, @Param("offset") int offset, @Param("pageSize") int pageSize);
+  long countUsers(@Param("tenantId") String tenantId, @Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled);
   void updateUserStatus(@Param("userId") String userId, @Param("enabled") Boolean enabled);
   void updateUserRole(@Param("userId") String userId, @Param("roleId") String roleId);
   void updateUserPassword(@Param("userId") String userId, @Param("passwordHash") String passwordHash);
   void revokeRefreshTokens(@Param("userId") String userId);
+  void revokeRefreshToken(@Param("token") String token);
+  int deleteStaleRefreshTokens();
 }

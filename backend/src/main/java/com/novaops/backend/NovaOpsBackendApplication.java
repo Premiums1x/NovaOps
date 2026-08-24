@@ -6,6 +6,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @MapperScan(basePackages = {
@@ -16,6 +17,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 })
 @EnableConfigurationProperties(SecurityProperties.class)
 @EnableAsync
+@EnableScheduling
 public class NovaOpsBackendApplication {
 
   public static void main(String[] args) {

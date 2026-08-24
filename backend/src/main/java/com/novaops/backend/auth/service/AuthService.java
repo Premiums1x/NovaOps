@@ -38,15 +38,19 @@ public class AuthService {
   private final AuthMapper authMapper;
   private final PasswordEncoder passwordEncoder;
   private final JwtService jwtService;
+  private final LoginFailureGuard loginFailureGuard;
 
-  public AuthService(AuthMapper authMapper, PasswordEncoder passwordEncoder, JwtService jwtService) {
+  public AuthService(AuthMapper authMapper, PasswordEncoder passwordEncoder, JwtService jwtService, LoginFailureGuard loginFailureGuard) {
     this.authMapper = authMapper;
     this.passwordEncoder = passwordEncoder;
     this.jwtService = jwtService;
+    this.loginFailureGuard = loginFailureGuard;
   }
 
   @Transactional
   public LoginResponse login(LoginRequest request) {
+    loginFailureGuard.assertNotLocked(request.getUsername());
+
     UserRecord user = authMapper.findUserByUsername(request.getUsername());
 
     String tenantId = StringUtils.hasText(request.getTenantId()) ? request.getTenantId() : "tenant-a";
@@ -71,16 +75,19 @@ public class AuthService {
       }
       // 用户存在 → 校验密码
       if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+        loginFailureGuard.recordFailure(request.getUsername());
         throw new BusinessException(403, "账号或密码错误");
       }
       // 校验租户
       validateTenantAccess(user.getId(), tenantId);
       // 校验角色：用户绑定唯一身份，直接比对 roleId
       if (!user.getRoleId().equals(request.getRoleId())) {
+        loginFailureGuard.recordFailure(request.getUsername());
         throw new BusinessException(403, "身份不匹配");
       }
     }
 
+    loginFailureGuard.reset(request.getUsername());
     return issueLoginSession(user, tenantId);
   }
 
@@ -94,8 +101,15 @@ public class AuthService {
     if (user == null || !Boolean.TRUE.equals(user.getEnabled())) {
       throw new BusinessException(401, "refresh token 已失效");
     }
+    // 租户归属被移除后不能再凭旧 token 续期
+    validateTenantAccess(user.getId(), record.getTenantId());
 
-    return buildTokenResponse(user, record.getTenantId(), record.getToken());
+    // 轮换：旧的 refresh token 立即作废，签发新 token，降低泄露后的重放窗口
+    authMapper.revokeRefreshToken(record.getToken());
+    String rotatedRefreshToken = IdGenerator.randomId("rt");
+    LocalDateTime expiresAt = LocalDateTime.now().plusDays(jwtService.getRefreshTokenExpireDays());
+    authMapper.insertRefreshToken(rotatedRefreshToken, user.getId(), record.getTenantId(), expiresAt);
+    return buildTokenResponse(user, record.getTenantId(), rotatedRefreshToken);
   }
 
   public LoginResponse switchTenant(CurrentSession session, SwitchTenantRequest request) {
@@ -149,8 +163,9 @@ public class AuthService {
   public PageResult<UserListItemResponse> listUsers(CurrentSession session, UserListQuery query) {
     requireAdmin(session);
     int offset = (query.getPage() - 1) * query.getPageSize();
-    List<UserListItemResponse> list = authMapper.listUsers(query.getKeyword(), query.getRoleId(), query.getEnabled(), offset, query.getPageSize());
-    long total = authMapper.countUsers(query.getKeyword(), query.getRoleId(), query.getEnabled());
+    // 只列出与当前管理员共享租户的用户，避免跨租户越权管理
+    List<UserListItemResponse> list = authMapper.listUsers(session.getTenantId(), query.getKeyword(), query.getRoleId(), query.getEnabled(), offset, query.getPageSize());
+    long total = authMapper.countUsers(session.getTenantId(), query.getKeyword(), query.getRoleId(), query.getEnabled());
     return new PageResult<>(list, query.getPage(), query.getPageSize(), total);
   }
 
