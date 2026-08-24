@@ -409,9 +409,10 @@ export const getSessionFromAccessToken = (authorization: string | null) => {
   return parseJwtSession(token)
 }
 
-// 按「用户名 → 角色码」的优先级取权限表,兜底用 admin 权限,保证一定有返回值
+// 按「用户名 → 角色码」的优先级取权限表；未知角色兜底为空权限，
+// 绝不能兜底 admin——否则脏数据会凭空获得管理员权限
 const resolvePermissions = (username: string, roleCode: string, tenantId: TenantId): string[] =>
-  permissionMap[username]?.[tenantId] || permissionMap[roleCode]?.[tenantId] || permissionMap.admin?.[tenantId] || []
+  permissionMap[username]?.[tenantId] ?? permissionMap[roleCode]?.[tenantId] ?? []
 
 export const buildUserProfile = (username: string, tenantId: string): UserProfile => {
   const currentTenantId = normalizeTenantId(tenantId)
@@ -419,7 +420,7 @@ export const buildUserProfile = (username: string, tenantId: string): UserProfil
   if (!user) {
     throw new Error(`User not found: ${username}`)
   }
-  const roleCode = user.roles[0] || 'admin'
+  const roleCode = user.roles[0] || 'guest'
   const perms = resolvePermissions(username, roleCode, currentTenantId)
   return {
     id: user.id,
@@ -435,7 +436,7 @@ export const buildUserProfile = (username: string, tenantId: string): UserProfil
 export const buildMenuData = (username: string, tenantId: string): MenuDataDto => {
   const currentTenantId = normalizeTenantId(tenantId)
   const user = users[username] || dynamicUsers.get(username)
-  const roleCode = user?.roles?.[0] || 'admin'
+  const roleCode = user?.roles?.[0] || 'guest'
   const perms = resolvePermissions(username, roleCode, currentTenantId)
   return {
     menus: resolveMenusByUser(username),

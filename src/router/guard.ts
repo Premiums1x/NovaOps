@@ -44,7 +44,14 @@ export const setupRouterGuard = (router: Router) => {
 
     //先等路由注册完，再返回目标路径让 Vue Router 重新走一遍守卫
     if (authStore.isAuthenticated && !permissionStore.isRouteReady) {
-      await permissionStore.generateRoutes(router)
+      try {
+        await permissionStore.generateRoutes(router)
+      } catch {
+        //菜单接口失败时不能让导航无声卡死：退回登录页并保留目标路径
+        authStore.logout()
+        permissionStore.resetDynamicRoutes(router)
+        return { path: '/login', query: { redirect: to.fullPath } }
+      }
       return to.fullPath
     }
 
