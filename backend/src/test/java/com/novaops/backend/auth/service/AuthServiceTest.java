@@ -8,14 +8,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.novaops.backend.auth.dto.LoginRequest;
+import com.novaops.backend.auth.dto.RefreshTokenRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.mapper.AuthMapper;
+import com.novaops.backend.auth.model.RefreshTokenRecord;
 import com.novaops.backend.auth.model.TenantRecord;
 import com.novaops.backend.auth.model.UserRecord;
 import com.novaops.backend.common.config.SecurityProperties;
 import com.novaops.backend.common.exception.BusinessException;
 import com.novaops.backend.common.security.CurrentSession;
 import com.novaops.backend.common.security.JwtService;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +42,7 @@ class AuthServiceTest {
     properties.setJwtSecret("unit-test-secret-0123456789abcdef0123456789");
     properties.setAccessTokenExpireSeconds(1800);
     properties.setRefreshTokenExpireDays(7);
-    authService = new AuthService(authMapper, new BCryptPasswordEncoder(), new JwtService(properties));
+    authService = new AuthService(authMapper, new BCryptPasswordEncoder(), new JwtService(properties), new LoginFailureGuard());
   }
 
   @Test
@@ -134,6 +137,76 @@ class AuthServiceTest {
     when(authMapper.listPermissions("u-staff", "tenant-a")).thenReturn(List.of("ticket:view", "ticket:close"));
 
     authService.requirePermission(session(), "ticket:close");
+  }
+
+  @Test
+  void loginLocksAccountAfterRepeatedPasswordFailures() {
+    UserRecord user = user("role-staff", true);
+    when(authMapper.findUserByUsername("staff")).thenReturn(user);
+    LoginRequest wrongPassword = loginRequest("staff", "role-staff", "tenant-a");
+    wrongPassword.setPassword("wrong");
+
+    for (int i = 0; i < 5; i++) {
+      assertThatThrownBy(() -> authService.login(wrongPassword)).hasMessageContaining("账号或密码错误");
+    }
+    // 第 6 次即使密码正确也被锁定拦截
+    assertThatThrownBy(() -> authService.login(loginRequest("staff", "role-staff", "tenant-a")))
+        .hasMessageContaining("临时锁定");
+  }
+
+  @Test
+  void refreshRotatesTokenAndRevokesOldOne() {
+    RefreshTokenRecord record = refreshToken("rt-old", false);
+    when(authMapper.findRefreshToken("rt-old")).thenReturn(record);
+    when(authMapper.findUserById("u-staff")).thenReturn(user("role-staff", true));
+    when(authMapper.countUserTenant("u-staff", "tenant-a")).thenReturn(1);
+
+    RefreshTokenRequest request = new RefreshTokenRequest();
+    request.setRefreshToken("rt-old");
+    var response = authService.refresh(request);
+
+    assertThat(response.getRefreshToken()).isNotBlank().isNotEqualTo("rt-old");
+    verify(authMapper).revokeRefreshToken("rt-old");
+    verify(authMapper).insertRefreshToken(
+        org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.ArgumentMatchers.any(LocalDateTime.class));
+  }
+
+  @Test
+  void refreshRejectsRevokedToken() {
+    when(authMapper.findRefreshToken("rt-revoked")).thenReturn(refreshToken("rt-revoked", true));
+
+    RefreshTokenRequest request = new RefreshTokenRequest();
+    request.setRefreshToken("rt-revoked");
+    assertThatThrownBy(() -> authService.refresh(request))
+        .isInstanceOf(BusinessException.class)
+        .hasMessageContaining("已失效");
+  }
+
+  @Test
+  void refreshRejectsWhenTenantMembershipRemoved() {
+    RefreshTokenRecord record = refreshToken("rt-old", false);
+    when(authMapper.findRefreshToken("rt-old")).thenReturn(record);
+    when(authMapper.findUserById("u-staff")).thenReturn(user("role-staff", true));
+    when(authMapper.countUserTenant("u-staff", "tenant-a")).thenReturn(0);
+
+    RefreshTokenRequest request = new RefreshTokenRequest();
+    request.setRefreshToken("rt-old");
+    assertThatThrownBy(() -> authService.refresh(request))
+        .isInstanceOf(BusinessException.class)
+        .hasMessageContaining("租户");
+  }
+
+  private RefreshTokenRecord refreshToken(String token, boolean revoked) {
+    RefreshTokenRecord record = new RefreshTokenRecord();
+    record.setToken(token);
+    record.setUserId("u-staff");
+    record.setTenantId("tenant-a");
+    record.setExpiresAt(LocalDateTime.now().plusDays(1));
+    record.setRevoked(revoked);
+    return record;
   }
 
   private UserRecord user(String roleId, boolean enabled) {
