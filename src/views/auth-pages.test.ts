@@ -33,14 +33,12 @@ describe('authentication pages', () => {
     vi.clearAllMocks()
   })
 
-  it('uses an editable tenant code input on login', async () => {
+  it('uses the backend-supported tenant selector on login', async () => {
     const router = await makeRouter([{ path: '/login', component: LoginView }], '/login')
     const wrapper = mount(LoginView, { global: { plugins: [antdPlugin, router] } })
     await flushPromises()
-    const tenantInput = wrapper.get('input[placeholder="例如 tenant-a"]')
-    expect(tenantInput.element.tagName).toBe('INPUT')
-    await tenantInput.setValue('tenant-acme')
-    expect((tenantInput.element as HTMLInputElement).value).toBe('tenant-acme')
+    expect(wrapper.text()).toContain('Tenant A')
+    expect(wrapper.text()).toContain('租户')
     expect(wrapper.text()).toContain('若账号不存在')
   })
 
@@ -53,13 +51,13 @@ describe('authentication pages', () => {
     vi.mocked(registerApi).mockResolvedValue(undefined)
     const router = await makeRouter(routes, '/register')
     const wrapper = mount(RegisterView, { global: { plugins: [antdPlugin, router] } })
-    await wrapper.get('input[placeholder="请输入账号"]').setValue('new-staff')
+    await wrapper.get('input[placeholder="请输入账号"]').setValue('new_staff')
     await wrapper.get('input[placeholder="用于接收激活邮件"]').setValue('staff@example.com')
     await wrapper.get('input[type="password"]').setValue('strong-password')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(registerApi).toHaveBeenCalledWith({
-      username: 'new-staff',
+      username: 'new_staff',
       email: 'staff@example.com',
       password: 'strong-password',
     })
