@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novaops.backend.asset.mapper.AssetMapper">
+
+  <sql id="assetFilters">
+    where a.tenant_id = #{tenantId}
+      and a.deleted = 0
+    <if test="status != null and status != ''">
+      and a.status = #{status}
+    </if>
+    <if test="type != null and type != ''">
+      and a.type = #{type}
+    </if>
+    <if test="keyword != null and keyword != ''">
+      and (
+        lower(a.asset_no) like concat('%', lower(#{keyword}), '%')
+        or lower(a.name) like concat('%', lower(#{keyword}), '%')
+        or lower(a.location) like concat('%', lower(#{keyword}), '%')
+        or lower(u.display_name) like concat('%', lower(#{keyword}), '%')
+      )
+    </if>
+  </sql>
+
+  <select id="countAssets" resultType="long">
+    select count(1)
+    from biz_asset a
+    left join sys_user u on u.id = a.owner_id
+    <include refid="assetFilters" />
+  </select>
+
+  <select id="queryAssets" resultType="com.novaops.backend.asset.model.AssetRecord">
+    select a.id, a.tenant_id, a.asset_no, a.name, a.type, a.status,
+           a.owner_id, u.display_name as owner_name, a.location,
+           a.purchase_date, a.updated_at
+    from biz_asset a
+    left join sys_user u on u.id = a.owner_id
+    <include refid="assetFilters" />
+    order by a.updated_at desc
+    limit #{limit} offset #{offset}
+  </select>
+
+  <select id="findAsset" resultType="com.novaops.backend.asset.model.AssetRecord">
+    select a.id, a.tenant_id, a.asset_no, a.name, a.type, a.status,
+           a.owner_id, u.display_name as owner_name, a.location, a.spec,
+           a.remark, a.purchase_date, a.created_at, a.updated_at, a.version
+    from biz_asset a
+    left join sys_user u on u.id = a.owner_id
+    where a.tenant_id = #{tenantId}
+      and a.id = #{id}
+      and a.deleted = 0
+    limit 1
+  </select>
+
+  <insert id="insertAsset" parameterType="com.novaops.backend.asset.model.AssetRecord">
+    insert into biz_asset (
+      id, tenant_id, asset_no, name, type, status, owner_id, location,
+      spec, remark, purchase_date, version, created_at, updated_at, deleted
+    ) values (
+      #{id}, #{tenantId}, #{assetNo}, #{name}, #{type}, #{status}, #{ownerId}, #{location},
+      #{spec}, #{remark}, #{purchaseDate}, #{version}, #{createdAt}, #{updatedAt}, 0
+    )
+  </insert>
+
+  <!-- 乐观锁：where 带 version，冲突时影响 0 行 -->
+  <update id="updateAsset" parameterType="com.novaops.backend.asset.model.AssetRecord">
+    update biz_asset
+    set name = #{name},
+        type = #{type},
+        status = #{status},
+        owner_id = #{ownerId},
+        location = #{location},
+        spec = #{spec},
+        remark = #{remark},
+        version = version + 1,
+        updated_at = #{updatedAt}
+    where id = #{id}
+      and tenant_id = #{tenantId}
+      and version = #{version}
+  </update>
+
+  <select id="findByIds" resultType="com.novaops.backend.asset.model.AssetRecord">
+    select id, tenant_id, asset_no, name, status
+    from biz_asset
+    where tenant_id = #{tenantId}
+      and deleted = 0
+      and id in
+      <foreach collection="ids" item="id" open="(" separator="," close=")">
+        #{id}
+      </foreach>
+  </select>
+
+  <insert id="insertLog" parameterType="com.novaops.backend.asset.model.AssetLogRecord">
+    insert into biz_asset_log (id, asset_id, tenant_id, action, operator_id, target_user_id, remark, created_at)
+    values (#{id}, #{assetId}, #{tenantId}, #{action}, #{operatorId}, #{targetUserId}, #{remark}, #{createdAt})
+  </insert>
+
+  <select id="listLogs" resultType="com.novaops.backend.asset.model.AssetLogRecord">
+    select id, asset_id, tenant_id, action, operator_id, target_user_id, remark, created_at
+    from biz_asset_log
+    where asset_id = #{assetId}
+    order by created_at desc, id desc
+  </select>
+
+  <select id="listRelatedTickets" resultType="com.novaops.backend.asset.dto.RelatedTicket">
+    select t.id, t.title, t.status, t.priority, t.assignee
+    from biz_ticket t
+    inner join biz_ticket_asset_rel r on r.ticket_id = t.id
+    where r.asset_id = #{assetId}
+      and t.tenant_id = #{tenantId}
+    order by t.updated_at desc
+    limit 8
+  </select>
+</mapper>
