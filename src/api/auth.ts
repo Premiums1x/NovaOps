@@ -1,10 +1,23 @@
 import request from '@/utils/request'
-import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, RoleDto, UserListItemDto, UserListQueryDto, UserProfile } from '@/types/auth'
+import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, RegisterRequestDto, RoleDto, UserListItemDto, UserListQueryDto, UserProfile } from '@/types/auth'
 import type { PageResult } from '@/types/api'
 import type { MenuDataDto } from '@/types/menu'
 
 export const loginApi = (payload: LoginRequestDto) => {
   return request.post<LoginResponseDto, LoginRequestDto>('/auth/login', payload, {
+    skipAuthRefresh: true,
+  })
+}
+
+export const registerApi = (payload: RegisterRequestDto) => {
+  return request.post<void, RegisterRequestDto>('/auth/register', payload, {
+    skipAuthRefresh: true,
+  })
+}
+
+export const verifyApi = (token: string) => {
+  return request.get<void>('/auth/verify', {
+    params: { token },
     skipAuthRefresh: true,
   })
 }
