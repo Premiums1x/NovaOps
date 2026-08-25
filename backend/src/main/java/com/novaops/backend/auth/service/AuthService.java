@@ -6,6 +6,7 @@ import com.novaops.backend.auth.dto.LoginResponse;
 import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.MenuItemResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
+import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.TenantInfoResponse;
@@ -13,7 +14,9 @@ import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
 import com.novaops.backend.auth.dto.UserListItemResponse;
 import com.novaops.backend.common.api.PageResult;
+import com.novaops.backend.auth.mail.EmailSender;
 import com.novaops.backend.auth.mapper.AuthMapper;
+import com.novaops.backend.auth.model.EmailVerificationRecord;
 import com.novaops.backend.auth.model.MenuRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
 import com.novaops.backend.auth.model.TenantRecord;
@@ -39,12 +42,14 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final JwtService jwtService;
   private final LoginFailureGuard loginFailureGuard;
+  private final EmailSender emailSender;
 
-  public AuthService(AuthMapper authMapper, PasswordEncoder passwordEncoder, JwtService jwtService, LoginFailureGuard loginFailureGuard) {
+  public AuthService(AuthMapper authMapper, PasswordEncoder passwordEncoder, JwtService jwtService, LoginFailureGuard loginFailureGuard, EmailSender emailSender) {
     this.authMapper = authMapper;
     this.passwordEncoder = passwordEncoder;
     this.jwtService = jwtService;
     this.loginFailureGuard = loginFailureGuard;
+    this.emailSender = emailSender;
   }
 
   @Transactional
@@ -56,39 +61,81 @@ public class AuthService {
     String tenantId = StringUtils.hasText(request.getTenantId()) ? request.getTenantId() : "tenant-a";
 
     if (user == null) {
-      // 用户不存在 → 自助注册。管理员账号不允许自助创建（防止任何人
-      // 直接注册出 admin 身份），租户必须是系统里真实存在的租户
-      RoleResponse role = authMapper.findRoleById(request.getRoleId());
-      if (role == null) {
-        throw new BusinessException(403, "身份不存在");
-      }
-      if ("admin".equals(role.getCode())) {
-        throw new BusinessException(403, "管理员账号不支持自助注册，请联系系统管理员创建");
-      }
-      if (authMapper.findTenantById(tenantId) == null) {
-        throw new BusinessException(403, "租户不存在");
-      }
-      user = createUser(request.getUsername(), request.getPassword(), request.getUsername(), tenantId, role.getId());
-    } else {
-      if (!Boolean.TRUE.equals(user.getEnabled())) {
-        throw new BusinessException(403, "账号已被禁用");
-      }
-      // 用户存在 → 校验密码
-      if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-        loginFailureGuard.recordFailure(request.getUsername());
-        throw new BusinessException(403, "账号或密码错误");
-      }
-      // 校验租户
-      validateTenantAccess(user.getId(), tenantId);
-      // 校验角色：用户绑定唯一身份，直接比对 roleId
-      if (!user.getRoleId().equals(request.getRoleId())) {
-        loginFailureGuard.recordFailure(request.getUsername());
-        throw new BusinessException(403, "身份不匹配");
-      }
+      // 用户不存在 → 不再自助注册，统一返回模糊错误避免账号枚举
+      loginFailureGuard.recordFailure(request.getUsername());
+      throw new BusinessException(403, "账号或密码错误");
+    }
+
+    if (!Boolean.TRUE.equals(user.getEnabled())) {
+      throw new BusinessException(403, "账号未激活或已被禁用");
+    }
+    if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+      loginFailureGuard.recordFailure(request.getUsername());
+      throw new BusinessException(403, "账号或密码错误");
+    }
+    validateTenantAccess(user.getId(), tenantId);
+    if (!user.getRoleId().equals(request.getRoleId())) {
+      loginFailureGuard.recordFailure(request.getUsername());
+      throw new BusinessException(403, "身份不匹配");
     }
 
     loginFailureGuard.reset(request.getUsername());
     return issueLoginSession(user, tenantId);
+  }
+
+  /** 显式注册：创建未激活账号（enabled=0），生成验证 token 并发送激活邮件。 */
+  @Transactional
+  public void register(RegisterRequest request) {
+    String username = request.getUsername().trim();
+    String email = request.getEmail().trim().toLowerCase();
+
+    if (authMapper.findUserByUsername(username) != null) {
+      throw new BusinessException(409, "账号已存在");
+    }
+    if (authMapper.findUserByEmail(email) != null) {
+      throw new BusinessException(409, "邮箱已被注册");
+    }
+
+    RoleResponse memberRole = authMapper.findRoleById("role-member");
+    if (memberRole == null) {
+      throw new BusinessException(500, "默认身份未配置");
+    }
+
+    UserRecord user = new UserRecord();
+    user.setId(IdGenerator.randomId("usr"));
+    user.setUsername(username);
+    user.setEmail(email);
+    user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    user.setDisplayName(username);
+    user.setRoleId(memberRole.getId());
+    authMapper.insertUser(user);
+    // 过渡期：单租户方向，注册用户默认绑定 tenant-a（去租户阶段统一移除）
+    authMapper.insertUserTenant(user.getId(), "tenant-a");
+
+    String token = IdGenerator.randomId("ev");
+    authMapper.insertEmailVerification(token, user.getId(), "register", LocalDateTime.now().plusHours(24));
+    emailSender.sendVerificationEmail(email, token);
+  }
+
+  /** 邮箱激活：校验 token 后启用账号并强制首次改密。 */
+  @Transactional
+  public void verify(String token) {
+    EmailVerificationRecord record = authMapper.findEmailVerification(token);
+    if (record == null || Boolean.TRUE.equals(record.getUsed())) {
+      throw new BusinessException(400, "激活链接无效或已使用");
+    }
+    if (record.getExpiresAt().isBefore(LocalDateTime.now())) {
+      throw new BusinessException(400, "激活链接已过期");
+    }
+    UserRecord user = authMapper.findUserById(record.getUserId());
+    if (user == null) {
+      throw new BusinessException(404, "用户不存在");
+    }
+    if (Boolean.TRUE.equals(user.getEnabled())) {
+      throw new BusinessException(400, "账号已激活，请直接登录");
+    }
+    authMapper.activateUser(user.getId());
+    authMapper.markEmailVerificationUsed(token);
   }
 
   public AuthTokenResponse refresh(RefreshTokenRequest request) {
@@ -250,20 +297,8 @@ public class AuthService {
     }
   }
 
-  private UserRecord createUser(String username, String password, String displayName, String tenantId, String roleId) {
-    UserRecord user = new UserRecord();
-    user.setId(IdGenerator.randomId("usr"));
-    user.setUsername(username);
-    user.setPasswordHash(passwordEncoder.encode(password));
-    user.setDisplayName(displayName);
-    user.setRoleId(roleId);
-    authMapper.insertUser(user);
-    authMapper.insertUserTenant(user.getId(), tenantId);
-    return user;
-  }
-
   private String resolveMenuScopeByRole(String roleCode) {
-    if ("guest".equals(roleCode)) {
+    if ("guest".equals(roleCode) || "member".equals(roleCode)) {
       return "guest";
     }
     if ("staff".equals(roleCode)) {

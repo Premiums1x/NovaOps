@@ -63,6 +63,7 @@ const handleLogin = async () => {
           </a-form-item>
           <a-form-item><a-button type="primary" html-type="submit" block :loading="submitting">登录</a-button></a-form-item>
         </a-form>
+        <footer class="login-footer">没有账号？<a @click="router.replace('/register')">去注册</a></footer>
       </a-card>
     </section>
   </main>
@@ -80,6 +81,6 @@ const handleLogin = async () => {
 .brand-metrics span { display: grid; gap: 3px; }.brand-metrics strong { color: #fff; font-size: 18px; }
 .form-panel { display: grid; place-items: center; padding: 48px clamp(28px,5vw,72px); background: var(--nova-surface); }
 .mobile-brand { display: none; }.login-card { width: min(430px,100%); background: transparent; box-shadow: none; }
-.login-heading { margin-bottom: 28px; }.login-heading h2 { margin: 8px 0 5px; color: var(--nova-text); font-size: 30px; }.login-heading p { margin: 0; color: var(--nova-text-secondary); }.login-alert { margin-bottom: 20px; }
+.login-heading { margin-bottom: 28px; }.login-heading h2 { margin: 8px 0 5px; color: var(--nova-text); font-size: 30px; }.login-heading p { margin: 0; color: var(--nova-text-secondary); }.login-alert { margin-bottom: 20px; }.login-footer { margin-top: 16px; text-align: center; color: var(--nova-text-secondary); }.login-footer a { color: #1677ff; }
 @media (max-width: 900px) { .login-page { grid-template-columns: 1fr; }.brand-panel { display: none; }.form-panel { min-height: 100vh; padding: 28px 20px; align-content: center; }.mobile-brand { display: block; margin-bottom: 16px; color: var(--nova-primary); font-size: 24px; font-weight: 800; } }
 </style>

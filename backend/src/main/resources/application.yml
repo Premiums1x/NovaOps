@@ -33,6 +33,17 @@ spring:
       embedding:
         options:
           model: ${SILICONFLOW_EMBEDDING_MODEL:BAAI/bge-m3}
+  mail:
+    host: ${SMTP_HOST:smtp.qq.com}
+    port: ${SMTP_PORT:465}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
 
 mybatis:
   mapper-locations: classpath*:mapper/*.xml
@@ -45,6 +56,9 @@ app:
     jwt-secret: ${NOVAOPS_JWT_SECRET:}
     access-token-expire-seconds: 1800
     refresh-token-expire-days: 7
+  mail:
+    mode: ${MAIL_MODE:log}
+    from: ${MAIL_FROM:}
   kb:
     storage-path: ${NOVAOPS_KB_STORAGE:./data/kb}
     max-file-size-bytes: ${NOVAOPS_KB_MAX_FILE_BYTES:31457280}
