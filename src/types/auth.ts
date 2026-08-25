@@ -20,6 +20,12 @@ export interface LoginRequestDto {
   roleId: string
 }
 
+export interface RegisterRequestDto {
+  username: string
+  email: string
+  password: string
+}
+
 export interface RoleDto {
   id: string
   code: string
