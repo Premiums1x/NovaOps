@@ -11,6 +11,7 @@ export interface UserProfile {
   permissions: string[]
   tenantId: string
   tenants: TenantInfo[]
+  platformAdmin: boolean
 }
 
 export interface LoginRequestDto {
@@ -55,4 +56,11 @@ export interface AuthTokenDto {
 
 export interface LoginResponseDto extends AuthTokenDto {
   tenantId: string
+}
+
+export interface RegisterRequestDto {
+  invitationToken: string
+  username: string
+  displayName: string
+  password: string
 }

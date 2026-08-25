@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { loginApi, meApi, refreshTokenApi, switchTenantApi } from '@/api/auth'
-import type { LoginRequestDto, UserProfile } from '@/types/auth'
+import { loginApi, meApi, refreshTokenApi, registerApi } from '@/api/auth'
+import type { LoginRequestDto, LoginResponseDto, RegisterRequestDto, UserProfile } from '@/types/auth'
 import { clearTokens, setTokens as setTokenCache } from '@/utils/request/token'
 
 //用户信息
@@ -25,6 +25,12 @@ export const useAuthStore = defineStore('auth', {
   },
   
   actions: {
+    async establishSession(data: LoginResponseDto) {
+      this.tenantId = data.tenantId
+      this.setTokens(data.accessToken, data.refreshToken)
+      await this.me()
+    },
+
     setTokens(accessToken: string, refreshToken: string) {
       this.accessToken = accessToken
       this.refreshToken = refreshToken
@@ -41,12 +47,12 @@ export const useAuthStore = defineStore('auth', {
 
     async login(payload: LoginRequestDto) {
       const data = await loginApi(payload)
+      await this.establishSession(data)
+    },
 
-      this.tenantId = data.tenantId
-
-      this.setTokens(data.accessToken, data.refreshToken)
-
-      await this.me()
+    async register(payload: RegisterRequestDto) {
+      const data = await registerApi(payload)
+      await this.establishSession(data)
     },
 
     async refresh() {
@@ -66,17 +72,6 @@ export const useAuthStore = defineStore('auth', {
       this.user = data
       this.tenantId = data.tenantId
       return data
-    },
-
-    async switchTenant(tenantId: string) {
-
-      const data = await switchTenantApi(tenantId)
-
-      // 更新Auth内容
-      this.tenantId = data.tenantId
-      this.setTokens(data.accessToken, data.refreshToken)
-
-      await this.me()
     },
 
     logout() {
