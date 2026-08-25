@@ -192,6 +192,24 @@ export const actionAssetByTenant = (tenantId: string, id: string, username: stri
     return null
   }
   const now = dayjs().toISOString()
+
+  // 状态机前置校验（与后端 AssetService.validateTransition 保持一致）
+  const invalid = (() => {
+    switch (payload.action) {
+      case 'claim':
+        return asset.status !== 'stock' ? '仅库存中的资产可领用' : null
+      case 'receive':
+        return asset.status !== 'in_use' ? '仅已领用的资产可回收' : null
+      case 'scrap':
+        return asset.status === 'scrapped' ? '资产已报废，不可重复操作' : null
+      default:
+        return '不支持的资产动作'
+    }
+  })()
+  if (invalid) {
+    throw new Error(invalid)
+  }
+
   switch (payload.action) {
     case 'receive':
       asset.status = 'stock'
