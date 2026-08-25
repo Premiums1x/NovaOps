@@ -9,6 +9,7 @@ drop table if exists biz_ticket_asset_rel;
 drop table if exists biz_ticket_timeline;
 drop table if exists biz_ticket;
 drop table if exists sys_refresh_token;
+drop table if exists sys_invitation;
 drop table if exists sys_user_tenant;
 drop table if exists sys_role_permission;
 drop table if exists sys_user_role;
@@ -31,6 +32,7 @@ create table sys_user (
   display_name varchar(100) not null,
   role_id varchar(64) not null,
   enabled tinyint not null default 1,
+  platform_admin tinyint not null default 0,
   deleted tinyint not null default 0,
   created_at datetime not null default current_timestamp
 );
@@ -83,6 +85,20 @@ create table sys_refresh_token (
   expires_at datetime not null,
   revoked tinyint not null default 0,
   created_at datetime not null default current_timestamp
+);
+
+create table sys_invitation (
+  id varchar(64) primary key,
+  token_hash char(64) not null unique,
+  tenant_id varchar(64) not null,
+  role_id varchar(64) not null,
+  created_by varchar(64) not null,
+  expires_at datetime not null,
+  used_at datetime null,
+  created_at datetime not null default current_timestamp,
+  updated_at datetime not null default current_timestamp,
+  index idx_invitation_tenant_created (tenant_id, created_at desc),
+  index idx_invitation_expiry_used (expires_at, used_at)
 );
 
 create table kb_document (
@@ -194,10 +210,10 @@ insert into sys_tenant (id, name, sort_order) values
   ('tenant-a', 'Tenant A', 10),
   ('tenant-b', 'Tenant B', 20);
 
-insert into sys_user (id, username, password_hash, display_name, role_id, enabled, deleted) values
-  ('u-admin', 'admin', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'System Admin', 'role-admin', 1, 0),
-  ('u-staff', 'staff', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Support Staff', 'role-staff', 1, 0),
-  ('u-guest', 'guest', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Read-only Guest', 'role-guest', 1, 0);
+insert into sys_user (id, username, password_hash, display_name, role_id, enabled, platform_admin, deleted) values
+  ('u-admin', 'admin', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'System Admin', 'role-admin', 1, 1, 0),
+  ('u-staff', 'staff', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Support Staff', 'role-staff', 1, 0, 0),
+  ('u-guest', 'guest', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Read-only Guest', 'role-guest', 1, 0, 0);
 
 insert into sys_role (id, code, name, description, sort_order) values
   ('role-admin', 'admin', '管理员', '管理用户、身份、知识库以及全部业务数据', 10),
@@ -300,7 +316,8 @@ insert into sys_menu (id, title, name, path, component, icon, permission_code, k
   ('staff-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'staff'),
   ('staff-ticket', '工单', 'TicketRoot', '/ticket', 'RouteView', 'ticket', null, 1, null, 20, 'staff'),
   ('staff-ticket-list', '工单列表', 'TicketList', '/ticket/list', 'TicketListView', null, 'ticket:view', 1, 'staff-ticket', 21, 'staff'),
-  ('guest-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'guest');
+  ('guest-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'guest'),
+  ('platform-tenant-invitations', '租户与邀请', 'TenantInvitationManagement', '/system/tenants', 'TenantInvitationManagementView', 'user', null, 1, null, 60, 'platform');
 
 insert into biz_ticket (id, tenant_id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at) values
   ('A-TICKET-0001', 'tenant-a', 'TENANT-A 网络与终端巡检异常 #1', '巡检发现交换机端口丢包，需要排查链路质量。', 'pending', 'medium', 'Tom', 'admin', '2026-04-25 18:00:00', '2026-04-20 09:00:00', '2026-04-20 11:00:00'),

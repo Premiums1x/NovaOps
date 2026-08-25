@@ -11,6 +11,7 @@ public class UserProfileResponse {
   private List<String> permissions;
   private String tenantId;
   private List<TenantInfoResponse> tenants;
+  private Boolean platformAdmin;
 
   public String getId() {
     return id;
@@ -66,5 +67,13 @@ public class UserProfileResponse {
 
   public void setTenants(List<TenantInfoResponse> tenants) {
     this.tenants = tenants;
+  }
+
+  public Boolean getPlatformAdmin() {
+    return platformAdmin;
+  }
+
+  public void setPlatformAdmin(Boolean platformAdmin) {
+    this.platformAdmin = platformAdmin;
   }
 }

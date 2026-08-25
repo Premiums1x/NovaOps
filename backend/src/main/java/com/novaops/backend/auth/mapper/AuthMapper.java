@@ -2,6 +2,8 @@ package com.novaops.backend.auth.mapper;
 
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.UserListItemResponse;
+import com.novaops.backend.auth.dto.InvitationResponse;
+import com.novaops.backend.auth.model.InvitationRecord;
 import com.novaops.backend.auth.model.MenuRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
 import com.novaops.backend.auth.model.TenantRecord;
@@ -23,6 +25,12 @@ public interface AuthMapper {
   List<TenantRecord> listTenantsByUserId(@Param("userId") String userId);
 
   TenantRecord findTenantById(@Param("tenantId") String tenantId);
+
+  List<TenantRecord> listAllTenants();
+
+  void insertTenant(TenantRecord tenant);
+
+  void cloneTenantRolePermissions(@Param("sourceTenantId") String sourceTenantId, @Param("targetTenantId") String targetTenantId);
 
   int countUserTenant(@Param("userId") String userId, @Param("tenantId") String tenantId);
 
@@ -46,6 +54,16 @@ public interface AuthMapper {
   List<RoleResponse> listRoles();
 
   RoleResponse findRoleById(@Param("roleId") String roleId);
+
+  RoleResponse findRoleByCode(@Param("roleCode") String roleCode);
+
+  List<InvitationResponse> listInvitations();
+
+  void insertInvitation(InvitationRecord invitation);
+
+  InvitationRecord findInvitationByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
+
+  int consumeInvitation(@Param("invitationId") String invitationId, @Param("usedAt") LocalDateTime usedAt);
 
   List<String> listPermissionsByRoleId(@Param("roleId") String roleId);
   List<UserListItemResponse> listUsers(@Param("tenantId") String tenantId, @Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled, @Param("offset") int offset, @Param("pageSize") int pageSize);

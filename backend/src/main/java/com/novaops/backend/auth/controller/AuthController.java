@@ -5,8 +5,8 @@ import com.novaops.backend.auth.dto.LoginRequest;
 import com.novaops.backend.auth.dto.LoginResponse;
 import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
+import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
-import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
 import com.novaops.backend.auth.dto.UserListItemResponse;
@@ -42,14 +42,14 @@ public class AuthController {
     return ApiResponse.success(authService.login(request), "登录成功");
   }
 
+  @PostMapping("/register")
+  public ApiResponse<LoginResponse> register(@Valid @RequestBody RegisterRequest request) {
+    return ApiResponse.success(authService.register(request), "注册成功");
+  }
+
   @PostMapping("/refresh")
   public ApiResponse<AuthTokenResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
     return ApiResponse.success(authService.refresh(request), "刷新成功");
-  }
-
-  @PostMapping("/switch-tenant")
-  public ApiResponse<LoginResponse> switchTenant(@Valid @RequestBody SwitchTenantRequest request) {
-    return ApiResponse.success(authService.switchTenant(RequestContext.getRequired(), request), "租户切换成功");
   }
 
   @GetMapping("/me")

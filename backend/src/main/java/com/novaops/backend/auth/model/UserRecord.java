@@ -8,6 +8,7 @@ public class UserRecord {
   private String displayName;
   private String roleId;
   private Boolean enabled;
+  private Boolean platformAdmin;
 
   public String getId() {
     return id;
@@ -45,4 +46,6 @@ public class UserRecord {
   public void setRoleId(String roleId) { this.roleId = roleId; }
   public Boolean getEnabled() { return enabled; }
   public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+  public Boolean getPlatformAdmin() { return platformAdmin; }
+  public void setPlatformAdmin(Boolean platformAdmin) { this.platformAdmin = platformAdmin; }
 }
