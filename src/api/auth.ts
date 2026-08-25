@@ -10,7 +10,14 @@ export const loginApi = (payload: LoginRequestDto) => {
 }
 
 export const registerApi = (payload: RegisterRequestDto) => {
-  return request.post<LoginResponseDto, RegisterRequestDto>('/auth/register', payload, {
+  return request.post<void, RegisterRequestDto>('/auth/register', payload, {
+    skipAuthRefresh: true,
+  })
+}
+
+export const verifyApi = (token: string) => {
+  return request.get<void>('/auth/verify', {
+    params: { token },
     skipAuthRefresh: true,
   })
 }
@@ -29,6 +36,10 @@ export const meApi = () => {
 
 export const menuApi = () => {
   return request.get<MenuDataDto>('/auth/menu')
+}
+
+export const switchTenantApi = (tenantId: string) => {
+  return request.post<LoginResponseDto, { tenantId: string }>('/auth/switch-tenant', { tenantId })
 }
 
 export const getRolesApi = () => {

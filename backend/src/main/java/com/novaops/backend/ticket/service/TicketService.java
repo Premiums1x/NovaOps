@@ -142,11 +142,14 @@ public class TicketService {
   @Transactional
   public TicketDetailResponse action(CurrentSession session, String ticketId, TicketActionRequest request) {
     // 流转动作按动作细分权限，接口注解无法表达这种动态映射
-    String requiredPermission = switch (request.getAction()) {
+    String action = request.getAction();
+    String requiredPermission = switch (action) {
       case "assign" -> "ticket:assign";
       case "transfer" -> "ticket:transfer";
       case "close" -> "ticket:close";
-      case "advance", "reject" -> "ticket:advance";
+      case "advance" -> "ticket:advance";
+      case "reject" -> "ticket:reject";
+      case "approve" -> "ticket:approve";
       default -> throw new BusinessException(400, "不支持的工单动作");
     };
     authService.requirePermission(session, requiredPermission);
@@ -154,24 +157,32 @@ public class TicketService {
     TicketRecord record = requireTicket(session.getTenantId(), ticketId);
     String previousStatus = record.getStatus();
 
-    switch (request.getAction()) {
+    // 状态机前置校验：非法转移直接拒绝（409），防止跨状态倒退/重复关单/越权流转
+    validateTransition(action, previousStatus);
+
+    switch (action) {
       case "assign" -> {
         if (StringUtils.hasText(request.getAssignee())) {
           record.setAssignee(request.getAssignee());
         }
-        if ("pending".equals(record.getStatus())) {
+        if ("pending".equals(previousStatus)) {
           record.setStatus("processing");
         }
+        // 非 pending：仅换人，状态保持不变
       }
       case "transfer" -> {
         if (StringUtils.hasText(request.getTargetUser())) {
           record.setAssignee(request.getTargetUser());
         }
-        record.setStatus("processing");
+        if ("review".equals(previousStatus)) {
+          record.setStatus("processing");
+        }
+        // 非 review：仅换人，状态保持不变
       }
-      case "reject" -> record.setStatus("processing");
-      case "close" -> record.setStatus("done");
-      case "advance" -> record.setStatus(resolveAdvanceStatus(record.getStatus()));
+      case "advance" -> record.setStatus("review");    // processing → review（提交复核）
+      case "approve" -> record.setStatus("done");      // review → done（复核通过）
+      case "reject" -> record.setStatus("processing"); // review → processing（驳回）
+      case "close" -> record.setStatus("done");        // processing/review → done（关闭）
       default -> throw new BusinessException(400, "不支持的工单动作");
     }
 
@@ -179,7 +190,7 @@ public class TicketService {
     ticketMapper.updateTicket(record);
     ticketMapper.insertTimeline(buildTimeline(
         record.getId(),
-        request.getAction(),
+        action,
         session.getUsername(),
         request.getRemark(),
         previousStatus,
@@ -188,6 +199,45 @@ public class TicketService {
     ));
 
     return buildDetail(record);
+  }
+
+  /**
+   * 工单状态机转移矩阵：只有命中合法转移才放行，否则抛 409。
+   * 状态：pending(待处理) → processing(处理中) → review(待复核) → done(已完成)。
+   * 动作语义：assign(指派)、advance(提交复核)、approve(复核通过)、reject(驳回)、close(关闭)、transfer(转派)。
+   */
+  private void validateTransition(String action, String currentStatus) {
+    switch (action) {
+      case "assign", "transfer" -> {
+        if ("done".equals(currentStatus)) {
+          throw new BusinessException(409, "已完成的工单不可再" + ("assign".equals(action) ? "指派" : "转派"));
+        }
+      }
+      case "advance" -> {
+        if (!"processing".equals(currentStatus)) {
+          throw new BusinessException(409, "仅处理中的工单可提交复核");
+        }
+      }
+      case "approve" -> {
+        if (!"review".equals(currentStatus)) {
+          throw new BusinessException(409, "仅待复核的工单可复核通过");
+        }
+      }
+      case "reject" -> {
+        if (!"review".equals(currentStatus)) {
+          throw new BusinessException(409, "仅待复核的工单可驳回");
+        }
+      }
+      case "close" -> {
+        if ("pending".equals(currentStatus)) {
+          throw new BusinessException(409, "待处理的工单不可直接关闭，请先指派");
+        }
+        if ("done".equals(currentStatus)) {
+          throw new BusinessException(409, "工单已关闭，不可重复关闭");
+        }
+      }
+      default -> throw new BusinessException(400, "不支持的工单动作");
+    }
   }
 
   public List<TicketCommentResponse> comments(CurrentSession session, String ticketId) {
@@ -336,15 +386,6 @@ public class TicketService {
     record.setToStatus(toStatus);
     record.setCreatedAt(createdAt);
     return record;
-  }
-
-  private String resolveAdvanceStatus(String currentStatus) {
-    return switch (currentStatus) {
-      case "pending" -> "processing";
-      case "processing" -> "review";
-      case "review" -> "done";
-      default -> currentStatus;
-    };
   }
 
   private Map<String, List<String>> buildAssetMap(List<String> ticketIds) {

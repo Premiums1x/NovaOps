@@ -53,10 +53,10 @@ const askSuggestion = async (question: string) => {
         <Welcome
           variant="borderless"
           title="你好，我是 Nova AI"
-          description="可以检索当前租户知识库，也可以回应简单问候。企业问题会附带可追溯依据。"
+          description="检索当前租户知识库，并为企业问题提供可追溯依据。"
         />
         <div class="suggestions" aria-label="推荐问题">
-          <button type="button" @click="askSuggestion('你能做什么')">你能做什么</button>
+          <button type="button" @click="askSuggestion('如何使用当前知识库？')">如何使用当前知识库？</button>
           <button type="button" @click="askSuggestion('如何处理服务器告警？')">如何处理服务器告警？</button>
           <button type="button" @click="askSuggestion('总结当前知识库的主要内容')">知识库有哪些内容？</button>
         </div>

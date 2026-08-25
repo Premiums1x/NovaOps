@@ -2,7 +2,7 @@ export type TicketStatus = 'pending' | 'processing' | 'review' | 'done'
 
 export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent'
 
-export type TicketActionType = 'assign' | 'close' | 'reject' | 'transfer' | 'advance'
+export type TicketActionType = 'assign' | 'close' | 'reject' | 'transfer' | 'advance' | 'approve'
 
 export interface TicketAttachmentDto {
   id: string

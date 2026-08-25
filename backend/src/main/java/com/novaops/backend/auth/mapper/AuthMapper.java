@@ -2,11 +2,9 @@ package com.novaops.backend.auth.mapper;
 
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.UserListItemResponse;
-import com.novaops.backend.auth.dto.InvitationResponse;
-import com.novaops.backend.auth.model.InvitationRecord;
+import com.novaops.backend.auth.model.EmailVerificationRecord;
 import com.novaops.backend.auth.model.MenuRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
-import com.novaops.backend.auth.model.TenantRecord;
 import com.novaops.backend.auth.model.UserRecord;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,58 +18,61 @@ public interface AuthMapper {
 
   List<String> listRolesByUserId(@Param("userId") String userId);
 
-  List<String> listPermissions(@Param("userId") String userId, @Param("tenantId") String tenantId);
-
-  List<TenantRecord> listTenantsByUserId(@Param("userId") String userId);
-
-  TenantRecord findTenantById(@Param("tenantId") String tenantId);
-
-  List<TenantRecord> listAllTenants();
-
-  void insertTenant(TenantRecord tenant);
-
-  void cloneTenantRolePermissions(@Param("sourceTenantId") String sourceTenantId, @Param("targetTenantId") String targetTenantId);
-
-  int countUserTenant(@Param("userId") String userId, @Param("tenantId") String tenantId);
+  List<String> listPermissions(@Param("userId") String userId);
 
   List<MenuRecord> listMenusByScope(@Param("menuScope") String menuScope);
 
   void insertRefreshToken(
       @Param("token") String token,
       @Param("userId") String userId,
-      @Param("tenantId") String tenantId,
       @Param("expiresAt") LocalDateTime expiresAt
   );
 
   RefreshTokenRecord findRefreshToken(@Param("token") String token);
 
-  // --- 注册 / 自动创建用户 ---
-
   void insertUser(UserRecord user);
-
-  void insertUserTenant(@Param("userId") String userId, @Param("tenantId") String tenantId);
 
   List<RoleResponse> listRoles();
 
   RoleResponse findRoleById(@Param("roleId") String roleId);
 
-  RoleResponse findRoleByCode(@Param("roleCode") String roleCode);
-
-  List<InvitationResponse> listInvitations();
-
-  void insertInvitation(InvitationRecord invitation);
-
-  InvitationRecord findInvitationByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
-
-  int consumeInvitation(@Param("invitationId") String invitationId, @Param("usedAt") LocalDateTime usedAt);
-
   List<String> listPermissionsByRoleId(@Param("roleId") String roleId);
-  List<UserListItemResponse> listUsers(@Param("tenantId") String tenantId, @Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled, @Param("offset") int offset, @Param("pageSize") int pageSize);
-  long countUsers(@Param("tenantId") String tenantId, @Param("keyword") String keyword, @Param("roleId") String roleId, @Param("enabled") Boolean enabled);
+
+  List<UserListItemResponse> listUsers(
+      @Param("keyword") String keyword,
+      @Param("roleId") String roleId,
+      @Param("enabled") Boolean enabled,
+      @Param("offset") int offset,
+      @Param("pageSize") int pageSize
+  );
+
+  long countUsers(
+      @Param("keyword") String keyword,
+      @Param("roleId") String roleId,
+      @Param("enabled") Boolean enabled
+  );
+
   void updateUserStatus(@Param("userId") String userId, @Param("enabled") Boolean enabled);
   void updateUserRole(@Param("userId") String userId, @Param("roleId") String roleId);
   void updateUserPassword(@Param("userId") String userId, @Param("passwordHash") String passwordHash);
   void revokeRefreshTokens(@Param("userId") String userId);
   void revokeRefreshToken(@Param("token") String token);
   int deleteStaleRefreshTokens();
+
+  // --- 邮箱验证 / 注册激活 ---
+
+  UserRecord findUserByEmail(@Param("email") String email);
+
+  void insertEmailVerification(
+      @Param("token") String token,
+      @Param("userId") String userId,
+      @Param("purpose") String purpose,
+      @Param("expiresAt") LocalDateTime expiresAt
+  );
+
+  EmailVerificationRecord findEmailVerification(@Param("token") String token);
+
+  void markEmailVerificationUsed(@Param("token") String token);
+
+  void activateUser(@Param("userId") String userId);
 }

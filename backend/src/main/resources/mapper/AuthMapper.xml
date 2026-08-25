@@ -5,7 +5,7 @@
 <mapper namespace="com.novaops.backend.auth.mapper.AuthMapper">
 
   <select id="findUserByUsername" resultType="com.novaops.backend.auth.model.UserRecord">
-    select id, username, password_hash, display_name, role_id, enabled, platform_admin
+    select id, username, email, password_hash, display_name, role_id, enabled, must_change_password
     from sys_user
     where username = #{username}
       and deleted = 0
@@ -13,7 +13,7 @@
   </select>
 
   <select id="findUserById" resultType="com.novaops.backend.auth.model.UserRecord">
-    select id, username, password_hash, display_name, role_id, enabled, platform_admin
+    select id, username, email, password_hash, display_name, role_id, enabled, must_change_password
     from sys_user
     where id = #{userId}
       and deleted = 0
@@ -34,49 +34,7 @@
     inner join sys_role_permission rp on rp.permission_id = p.id
     inner join sys_user u on u.role_id = rp.role_id
     where u.id = #{userId}
-      and rp.tenant_id = #{tenantId}
     order by p.code asc
-  </select>
-
-  <select id="listTenantsByUserId" resultType="com.novaops.backend.auth.model.TenantRecord">
-    select t.id, t.name
-    from sys_tenant t
-    inner join sys_user_tenant ut on ut.tenant_id = t.id
-    where ut.user_id = #{userId}
-    order by t.sort_order asc, t.id asc
-  </select>
-
-  <select id="findTenantById" resultType="com.novaops.backend.auth.model.TenantRecord">
-    select id, name
-    from sys_tenant
-    where id = #{tenantId}
-    limit 1
-  </select>
-
-  <select id="listAllTenants" resultType="com.novaops.backend.auth.model.TenantRecord">
-    select id, name
-    from sys_tenant
-    order by sort_order asc, id asc
-  </select>
-
-  <insert id="insertTenant">
-    insert into sys_tenant (id, name, sort_order)
-    select #{id}, #{name}, coalesce(max(sort_order), 0) + 10
-    from sys_tenant
-  </insert>
-
-  <insert id="cloneTenantRolePermissions">
-    insert into sys_role_permission (role_id, permission_id, tenant_id)
-    select role_id, permission_id, #{targetTenantId}
-    from sys_role_permission
-    where tenant_id = #{sourceTenantId}
-  </insert>
-
-  <select id="countUserTenant" resultType="int">
-    select count(1)
-    from sys_user_tenant
-    where user_id = #{userId}
-      and tenant_id = #{tenantId}
   </select>
 
   <select id="listMenusByScope" resultType="com.novaops.backend.auth.model.MenuRecord">
@@ -90,14 +48,12 @@
     insert into sys_refresh_token (
       token,
       user_id,
-      tenant_id,
       expires_at,
       revoked,
       created_at
     ) values (
       #{token},
       #{userId},
-      #{tenantId},
       #{expiresAt},
       0,
       now()
@@ -105,7 +61,7 @@
   </insert>
 
   <select id="findRefreshToken" resultType="com.novaops.backend.auth.model.RefreshTokenRecord">
-    select token, user_id, tenant_id, expires_at, revoked
+    select token, user_id, expires_at, revoked
     from sys_refresh_token
     where token = #{token}
     limit 1
@@ -114,8 +70,8 @@
   <!-- 注册 / 自动创建用户 -->
 
   <insert id="insertUser">
-    insert into sys_user (id, username, password_hash, display_name, role_id, enabled, deleted, created_at)
-    values (#{id}, #{username}, #{passwordHash}, #{displayName}, #{roleId}, 1, 0, now())
+    insert into sys_user (id, username, email, password_hash, display_name, role_id, enabled, must_change_password, deleted, created_at)
+    values (#{id}, #{username}, #{email}, #{passwordHash}, #{displayName}, #{roleId}, 0, 0, 0, now())
   </insert>
 
   <insert id="insertUserTenant">
@@ -135,52 +91,6 @@
     where id = #{roleId}
     limit 1
   </select>
-
-  <select id="findRoleByCode" resultType="com.novaops.backend.auth.dto.RoleResponse">
-    select id, code, name, description
-    from sys_role
-    where code = #{roleCode}
-    limit 1
-  </select>
-
-  <select id="listInvitations" resultType="com.novaops.backend.auth.dto.InvitationResponse">
-    select i.id,
-           i.tenant_id,
-           t.name tenant_name,
-           r.code role_code,
-           i.created_by,
-           i.expires_at,
-           i.used_at,
-           i.created_at
-    from sys_invitation i
-    inner join sys_tenant t on t.id = i.tenant_id
-    inner join sys_role r on r.id = i.role_id
-    order by i.created_at desc, i.id desc
-  </select>
-
-  <insert id="insertInvitation">
-    insert into sys_invitation (
-      id, token_hash, tenant_id, role_id, created_by, expires_at, used_at, created_at, updated_at
-    ) values (
-      #{id}, #{tokenHash}, #{tenantId}, #{roleId}, #{createdBy}, #{expiresAt}, #{usedAt}, #{createdAt}, #{updatedAt}
-    )
-  </insert>
-
-  <select id="findInvitationByTokenHashForUpdate" resultType="com.novaops.backend.auth.model.InvitationRecord">
-    select id, token_hash, tenant_id, role_id, created_by, expires_at, used_at, created_at, updated_at
-    from sys_invitation
-    where token_hash = #{tokenHash}
-    limit 1
-    for update
-  </select>
-
-  <update id="consumeInvitation">
-    update sys_invitation
-    set used_at = #{usedAt}, updated_at = #{usedAt}
-    where id = #{invitationId}
-      and used_at is null
-      and expires_at &gt; #{usedAt}
-  </update>
 
   <select id="listPermissionsByRoleId" resultType="string">
     select distinct p.code from sys_permission p
@@ -215,4 +125,34 @@
   <update id="revokeRefreshTokens">update sys_refresh_token set revoked = 1 where user_id = #{userId}</update>
   <update id="revokeRefreshToken">update sys_refresh_token set revoked = 1 where token = #{token}</update>
   <delete id="deleteStaleRefreshTokens">delete from sys_refresh_token where expires_at &lt; now() or (revoked = 1 and created_at &lt; date_sub(now(), interval 1 day))</delete>
+
+  <!-- 邮箱验证 / 注册激活 -->
+
+  <select id="findUserByEmail" resultType="com.novaops.backend.auth.model.UserRecord">
+    select id, username, email, password_hash, display_name, role_id, enabled, must_change_password
+    from sys_user
+    where email = #{email}
+      and deleted = 0
+    limit 1
+  </select>
+
+  <insert id="insertEmailVerification">
+    insert into sys_email_verification (token, user_id, purpose, expires_at, used, created_at)
+    values (#{token}, #{userId}, #{purpose}, #{expiresAt}, 0, now())
+  </insert>
+
+  <select id="findEmailVerification" resultType="com.novaops.backend.auth.model.EmailVerificationRecord">
+    select token, user_id, purpose, expires_at, used
+    from sys_email_verification
+    where token = #{token}
+    limit 1
+  </select>
+
+  <update id="markEmailVerificationUsed">
+    update sys_email_verification set used = 1 where token = #{token}
+  </update>
+
+  <update id="activateUser">
+    update sys_user set enabled = 1, must_change_password = 1 where id = #{userId} and deleted = 0
+  </update>
 </mapper>

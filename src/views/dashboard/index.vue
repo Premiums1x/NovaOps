@@ -65,6 +65,7 @@ const greeting = computed(() => {
   const name = authStore.user?.displayName || authStore.user?.username || 'User'
   return `Hi, ${name}`
 })
+const canViewTickets = computed(() => authStore.permissions.includes('ticket:view'))
 
 const applyQuickRange = (days: number) => {
   rangeValue.value = [dayjs().subtract(days - 1, 'day').startOf('day'), dayjs().endOf('day')]
@@ -202,6 +203,10 @@ const initCharts = async () => {
 }
 
 const fetchMetrics = async () => {
+  if (!canViewTickets.value) {
+    metrics.value = null
+    return
+  }
   const [start, end] = rangeValue.value
   loading.value = true
   try {
@@ -252,6 +257,12 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="dashboard-page">
+    <a-alert
+      v-if="!canViewTickets"
+      type="info"
+      show-icon
+      message="当前身份没有工单查看权限，暂时无法生成工单统计。"
+    />
     <a-card :bordered="false" class="welcome-card">
       <div class="welcome-head">
         <div>
@@ -296,7 +307,7 @@ onBeforeUnmount(() => {
       </a-col>
       <a-col :xs="24" :sm="12" :xl="6">
         <a-card :loading="loading" :bordered="false" class="metric-card metric-violet">
-          <a-statistic title="SLA 达成率" :value="metrics?.overview.slaRate || 0" :precision="1" suffix="%" />
+          <a-statistic title="紧急工单占比" :value="metrics?.overview.urgentRate || 0" :precision="1" suffix="%" />
         </a-card>
       </a-col>
     </a-row>
