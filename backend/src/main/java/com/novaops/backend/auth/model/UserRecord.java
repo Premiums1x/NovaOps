@@ -4,10 +4,12 @@ public class UserRecord {
 
   private String id;
   private String username;
+  private String email;
   private String passwordHash;
   private String displayName;
   private String roleId;
   private Boolean enabled;
+  private Boolean mustChangePassword;
 
   public String getId() {
     return id;
@@ -23,6 +25,14 @@ public class UserRecord {
 
   public void setUsername(String username) {
     this.username = username;
+  }
+
+  public String getEmail() {
+    return email;
+  }
+
+  public void setEmail(String email) {
+    this.email = email;
   }
 
   public String getPasswordHash() {
@@ -45,4 +55,6 @@ public class UserRecord {
   public void setRoleId(String roleId) { this.roleId = roleId; }
   public Boolean getEnabled() { return enabled; }
   public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+  public Boolean getMustChangePassword() { return mustChangePassword; }
+  public void setMustChangePassword(Boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
 }

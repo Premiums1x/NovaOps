@@ -5,6 +5,7 @@ import com.novaops.backend.auth.dto.LoginRequest;
 import com.novaops.backend.auth.dto.LoginResponse;
 import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
+import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.UserProfileResponse;
@@ -40,6 +41,18 @@ public class AuthController {
   @PostMapping("/login")
   public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
     return ApiResponse.success(authService.login(request), "登录成功");
+  }
+
+  @PostMapping("/register")
+  public ApiResponse<Void> register(@Valid @RequestBody RegisterRequest request) {
+    authService.register(request);
+    return ApiResponse.success(null, "注册成功，请查收激活邮件");
+  }
+
+  @GetMapping("/verify")
+  public ApiResponse<Void> verify(@org.springframework.web.bind.annotation.RequestParam("token") String token) {
+    authService.verify(token);
+    return ApiResponse.success(null, "激活成功，请登录");
   }
 
   @PostMapping("/refresh")
