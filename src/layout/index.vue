@@ -2,10 +2,10 @@
 import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { MenuProps, TabsProps } from 'ant-design-vue'
-import { message } from 'ant-design-vue'
 import {
   AppstoreOutlined,
   BookOutlined,
+  CustomerServiceOutlined,
   DashboardOutlined,
   DesktopOutlined,
   MenuFoldOutlined,
@@ -19,7 +19,6 @@ import { usePermissionStore } from '@/store/permission'
 import request from '@/utils/request'
 import type { MenuItemDto } from '@/types/menu'
 import ThemeSettings from '@/components/theme/ThemeSettings.vue'
-import FloatChat from '@/components/agent/FloatChat.vue'
 
 type MenuItem = Required<MenuProps>['items'][number]
 
@@ -106,9 +105,8 @@ const breadcrumbItems = computed(() => {
     }))
 })
 
-// 租户下拉选项
-const tenantOptions = computed(() =>
-  (authStore.user?.tenants || []).map((item) => ({ label: item.name, value: item.id }))
+const currentTenantName = computed(() =>
+  authStore.user?.tenants.find((item) => item.id === authStore.tenantId)?.name || authStore.tenantId
 )
 
 // 路由变化时：添加 Tab 页签 + 自动展开对应子菜单
@@ -158,24 +156,8 @@ const handleTabEdit: TabsProps['onEdit'] = (targetKey, action) => {
   }
 }
 
-// 切换租户：重新登录、重新生成路由、清空 Tab 页签
-const handleTenantChange = async (tenantId: string) => {
-  if (tenantId === authStore.tenantId) {
-    return
-  }
-  await authStore.switchTenant(tenantId)
-  await permissionStore.generateRoutes(router)
-  appStore.resetTabs()
-  message.success('租户切换成功')
-  await router.replace('/dashboard')
-}
-
 // 用户下拉操作：目前只有退出登录
 const handleUserAction = async ({ key }: { key: string }) => {
-  if (key === 'agent') {
-    await router.push('/agent/chat')
-    return
-  }
   if (key !== 'logout') {
     return
   }
@@ -185,6 +167,10 @@ const handleUserAction = async ({ key }: { key: string }) => {
   permissionStore.resetDynamicRoutes(router)
   appStore.resetTabs()
   await router.replace('/login')
+}
+
+const openAgentChat = () => {
+  void router.push('/agent/chat')
 }
 </script>
 
@@ -220,19 +206,18 @@ const handleUserAction = async ({ key }: { key: string }) => {
         <div class="header-right">
           <a-space>
             <ThemeSettings />
-            <a-select
-              :value="authStore.tenantId"
-              style="width: 160px"
-              :options="tenantOptions"
-              @change="handleTenantChange"
-            />
+            <a-tooltip v-if="permissionStore.hasPermission('agent:chat')" title="智能问答">
+              <a-button type="text" aria-label="智能问答" @click="openAgentChat">
+                <CustomerServiceOutlined />
+              </a-button>
+            </a-tooltip>
+            <span class="tenant-label" :title="authStore.tenantId">{{ currentTenantName }}</span>
             <a-dropdown>
               <a class="user-link" @click.prevent>
                 {{ authStore.user?.displayName || authStore.user?.username }}
               </a>
               <template #overlay>
                 <a-menu @click="handleUserAction">
-                  <a-menu-item key="agent">智能问答</a-menu-item>
                   <a-menu-item key="logout">退出登录</a-menu-item>
                 </a-menu>
               </template>
@@ -267,7 +252,6 @@ const handleUserAction = async ({ key }: { key: string }) => {
         </section>
       </a-layout-content>
     </a-layout>
-    <FloatChat />
   </a-layout>
 </template>
 
@@ -311,6 +295,14 @@ const handleUserAction = async ({ key }: { key: string }) => {
 
 .user-link {
   color: var(--nova-text);
+}
+
+.tenant-label {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--nova-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .layout-content {
