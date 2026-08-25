@@ -63,6 +63,7 @@ export const roles: RoleDto[] = [
   { id: 'role-admin', code: 'admin', name: '管理员', description: '管理用户、身份、知识库以及全部业务数据', permissions: ['auth:user:manage', 'dashboard:view', 'ticket:view', 'asset:view', 'kb:view', 'kb:edit', 'agent:chat'] },
   { id: 'role-staff', code: 'staff', name: '运维人员', description: '处理工单、资产与使用智能问答', permissions: ['dashboard:view', 'ticket:view', 'ticket:create', 'asset:view', 'agent:chat'] },
   { id: 'role-guest', code: 'guest', name: '访客', description: '只读访问授权看板与智能问答', permissions: ['dashboard:view', 'agent:chat'] },
+  { id: 'role-member', code: 'member', name: '普通成员', description: '注册用户默认身份：只读看板、提交工单与智能问答', permissions: ['dashboard:view', 'ticket:create', 'agent:chat'] },
 ]
 
 export const createDynamicUser = (username: string, roleId: string): MockUser => {
@@ -88,6 +89,48 @@ export const createDynamicUser = (username: string, roleId: string): MockUser =>
   return user
 }
 
+// 注册验证（mock 内存实现）：token -> username
+const verificationTokens = new Map<string, string>()
+const registeredEmails = new Set<string>()
+
+export const registerMockUser = (username: string, email: string, password: string): void => {
+  if (users[username] || dynamicUsers.get(username)) {
+    throw new Error('账号已存在')
+  }
+  if (registeredEmails.has(email)) {
+    throw new Error('邮箱已被注册')
+  }
+  registeredEmails.add(email)
+  const user: MockUser = {
+    id: `u-reg-${Date.now()}`,
+    username,
+    password,
+    displayName: username,
+    roles: ['member'],
+    enabled: false,
+    createdAt: new Date().toISOString(),
+  }
+  dynamicUsers.set(username, user)
+  const token = `mock-ev-${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  verificationTokens.set(token, username)
+  // 模拟 LogEmailSender：激活链接打印到浏览器控制台
+  console.log(`[激活邮件] 收件人=${email} 激活链接=http://localhost:5173/verify?token=${token}`)
+}
+
+export const verifyMockUser = (token: string): boolean => {
+  const username = verificationTokens.get(token)
+  if (!username) {
+    return false
+  }
+  const user = dynamicUsers.get(username)
+  if (!user) {
+    return false
+  }
+  user.enabled = true
+  verificationTokens.delete(token)
+  return true
+}
+
 const permissionMap: Record<string, Record<TenantId, string[]>> = {
   admin: {
     'tenant-a': [
@@ -100,6 +143,8 @@ const permissionMap: Record<string, Record<TenantId, string[]>> = {
       'ticket:close',
       'ticket:comment',
       'ticket:advance',
+      'ticket:approve',
+      'ticket:reject',
       'asset:view',
       'asset:create',
       'asset:edit',
@@ -118,6 +163,8 @@ const permissionMap: Record<string, Record<TenantId, string[]>> = {
       'ticket:close',
       'ticket:comment',
       'ticket:advance',
+      'ticket:approve',
+      'ticket:reject',
       'kb:view',
       'asset:view',
       'asset:create',
@@ -146,6 +193,10 @@ const permissionMap: Record<string, Record<TenantId, string[]>> = {
   guest: {
     'tenant-a': ['dashboard:view','agent:chat'],
     'tenant-b': ['dashboard:view','agent:chat'],
+  },
+  member: {
+    'tenant-a': ['dashboard:view', 'ticket:create', 'agent:chat'],
+    'tenant-b': ['dashboard:view', 'ticket:create', 'agent:chat'],
   },
 }
 
