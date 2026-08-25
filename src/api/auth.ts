@@ -1,10 +1,16 @@
 import request from '@/utils/request'
-import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, RoleDto, UserListItemDto, UserListQueryDto, UserProfile } from '@/types/auth'
+import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, RegisterRequestDto, RoleDto, UserListItemDto, UserListQueryDto, UserProfile } from '@/types/auth'
 import type { PageResult } from '@/types/api'
 import type { MenuDataDto } from '@/types/menu'
 
 export const loginApi = (payload: LoginRequestDto) => {
   return request.post<LoginResponseDto, LoginRequestDto>('/auth/login', payload, {
+    skipAuthRefresh: true,
+  })
+}
+
+export const registerApi = (payload: RegisterRequestDto) => {
+  return request.post<LoginResponseDto, RegisterRequestDto>('/auth/register', payload, {
     skipAuthRefresh: true,
   })
 }
@@ -23,10 +29,6 @@ export const meApi = () => {
 
 export const menuApi = () => {
   return request.get<MenuDataDto>('/auth/menu')
-}
-
-export const switchTenantApi = (tenantId: string) => {
-  return request.post<LoginResponseDto, { tenantId: string }>('/auth/switch-tenant', { tenantId })
 }
 
 export const getRolesApi = () => {

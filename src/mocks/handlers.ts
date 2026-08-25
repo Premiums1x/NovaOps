@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse, passthrough } from 'msw'
-import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, UserProfile } from '@/types/auth'
+import type { AuthTokenDto, LoginRequestDto, LoginResponseDto, RegisterRequestDto, UserProfile } from '@/types/auth'
 import type { MenuDataDto } from '@/types/menu'
 import type { ConversationDto } from '@/types/agent'
 import type {
@@ -20,20 +20,26 @@ import type {
 } from '@/types/ticket'
 import type { DashboardMetricsQueryDto } from '@/types/dashboard'
 import type { KbChunkDto, KbDocumentDto, KbListQueryDto, SaveKbDto } from '@/types/kb'
+import type { CreateInvitationDto, CreateTenantDto } from '@/types/system'
 import {
+  authenticateMockUser,
   buildMenuData,
   buildSession,
   buildUserProfile,
-  createDynamicUser,
+  createMockInvitation,
+  createMockTenant,
   getSessionFromAccessToken,
   getUser,
+  hasMembership,
+  listMockInvitations,
+  listMockTenants,
   refreshSession,
+  registerMockUser,
   roles,
   listMockUsers,
   setMockUserPassword,
   setMockUserRole,
   setMockUserStatus,
-  switchTenantSession,
 } from './db'
 import {
   buildDashboardMetrics,
@@ -98,7 +104,7 @@ const getSession = (request: Request) => {
   }
 
   const user = getUser(username)
-  if (!user) {
+  if (!user || !hasMembership(username, tenantId)) {
     return null
   }
 
@@ -115,38 +121,28 @@ export const handlers = [
     }
     await delay(350)
     const payload = (await request.json()) as LoginRequestDto
-    const tenantId = payload.tenantId || 'tenant-a'
-
-    let user = getUser(payload.username)
-    if (!user) {
-      // 用户不存在 → 自动创建（与后端行为一致：管理员身份不允许自助注册）
-      if (!payload.roleId) {
-        return fail(403, '身份不能为空')
-      }
-      if (!roles.some(r => r.id === payload.roleId)) {
-        return fail(403, '身份不存在')
-      }
-      if (payload.roleId === 'role-admin') {
-        return fail(403, '管理员账号不支持自助注册，请联系系统管理员创建')
-      }
-      user = createDynamicUser(payload.username, payload.roleId)
-    } else {
-      // 用户存在 → 校验密码
-      if (payload.password !== user.password) {
-        return fail(403, '账号或密码错误')
-      }
-      if (!user.enabled) return fail(403, '账号已被禁用')
-    }
+    const authenticated = authenticateMockUser(payload)
+    if ('error' in authenticated) return fail(403, authenticated.error)
 
     const session = buildSession({
-      username: user.username,
-      tenantId,
+      username: authenticated.user.username,
+      tenantId: authenticated.tenantId,
     })
     const data: LoginResponseDto = {
       ...session,
       tenantId: session.tenantId,
     }
     return ok(data, '登录成功')
+  }),
+
+  http.post('/api/auth/register', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    await delay(300)
+    const payload = (await request.json()) as RegisterRequestDto
+    const registered = registerMockUser(payload)
+    if ('error' in registered) return fail(400, registered.error)
+    const session = buildSession({ username: registered.user.username, tenantId: registered.tenantId })
+    return ok<LoginResponseDto>({ ...session, tenantId: registered.tenantId }, '注册成功')
   }),
 
   http.get('/api/auth/roles', async () => {
@@ -168,23 +164,6 @@ export const handlers = [
       return fail(401, 'refresh token 已失效')
     }
     return ok<AuthTokenDto>(nextSession, '刷新成功')
-  }),
-
-  http.post('/api/auth/switch-tenant', async ({ request }) => {
-    if (shouldPassthroughTicketBackend) {
-      return passthrough()
-    }
-    await delay(220)
-    const payload = (await request.json()) as { tenantId: string }
-    const nextSession = switchTenantSession(request.headers.get('Authorization'), payload.tenantId)
-    if (!nextSession) {
-      return fail(401, 'token 无效，无法切换租户')
-    }
-    const data: LoginResponseDto = {
-      ...nextSession,
-      tenantId: nextSession.tenantId,
-    }
-    return ok(data, '租户切换成功')
   }),
 
   http.get('/api/auth/me', async ({ request }) => {
@@ -213,24 +192,57 @@ export const handlers = [
     return ok(menuData)
   }),
 
+  http.get('/api/system/tenants', ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session || !getUser(session.username)?.platformAdmin) return fail(403, '仅平台管理员可操作')
+    return ok(listMockTenants())
+  }),
+
+  http.post('/api/system/tenants', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session || !getUser(session.username)?.platformAdmin) return fail(403, '仅平台管理员可操作')
+    const payload = (await request.json()) as CreateTenantDto
+    if (!/^[a-z][a-z0-9-]*$/.test(payload.code) || !payload.name?.trim()) return fail(400, '租户代码或名称无效')
+    const created = createMockTenant(session.username, { code: payload.code, name: payload.name.trim() })
+    return created ? ok(created, '租户创建成功') : fail(400, '租户代码已存在')
+  }),
+
+  http.get('/api/system/invitations', ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session || !getUser(session.username)?.platformAdmin) return fail(403, '仅平台管理员可操作')
+    return ok(listMockInvitations())
+  }),
+
+  http.post('/api/system/invitations', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session || !getUser(session.username)?.platformAdmin) return fail(403, '仅平台管理员可操作')
+    const payload = (await request.json()) as CreateInvitationDto
+    const created = createMockInvitation(session.username, payload)
+    return created ? ok(created, '邀请创建成功') : fail(400, '租户或邀请身份无效')
+  }),
+
   http.get('/api/auth/users', async ({ request }) => {
     if (shouldPassthroughTicketBackend) return passthrough()
     const session = getSession(request)
-    if (!session || getUser(session.username)?.roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
+    if (!session || buildUserProfile(session.username, session.tenantId).roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
     const url = new URL(request.url)
     const page = Number(url.searchParams.get('page') || 1)
     const pageSize = Number(url.searchParams.get('pageSize') || 10)
     const keyword = (url.searchParams.get('keyword') || '').toLowerCase()
     const roleId = url.searchParams.get('roleId')
     const enabledText = url.searchParams.get('enabled')
-    const filtered = listMockUsers().filter((item) => (!keyword || `${item.username} ${item.displayName}`.toLowerCase().includes(keyword)) && (!roleId || item.roleId === roleId) && (enabledText === null || item.enabled === (enabledText === 'true')))
+    const filtered = listMockUsers(session.tenantId).filter((item) => (!keyword || `${item.username} ${item.displayName}`.toLowerCase().includes(keyword)) && (!roleId || item.roleId === roleId) && (enabledText === null || item.enabled === (enabledText === 'true')))
     return ok({ list: filtered.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: filtered.length })
   }),
 
   http.put('/api/auth/users/:id/status', async ({ request, params }) => {
     if (shouldPassthroughTicketBackend) return passthrough()
     const session = getSession(request)
-    if (!session || getUser(session.username)?.roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
+    if (!session || buildUserProfile(session.username, session.tenantId).roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
     const payload = await request.json() as { enabled: boolean }
     return setMockUserStatus(String(params.id), payload.enabled) ? ok(null, '用户状态已更新') : fail(404, '用户不存在')
   }),
@@ -238,15 +250,15 @@ export const handlers = [
   http.put('/api/auth/users/:id/role', async ({ request, params }) => {
     if (shouldPassthroughTicketBackend) return passthrough()
     const session = getSession(request)
-    if (!session || getUser(session.username)?.roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
+    if (!session || buildUserProfile(session.username, session.tenantId).roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
     const payload = await request.json() as { roleId: string }
-    return setMockUserRole(String(params.id), payload.roleId) ? ok(null, '用户身份已更新') : fail(404, '用户或身份不存在')
+    return setMockUserRole(String(params.id), session.tenantId, payload.roleId) ? ok(null, '用户身份已更新') : fail(404, '用户或身份不存在')
   }),
 
   http.put('/api/auth/users/:id/password', async ({ request, params }) => {
     if (shouldPassthroughTicketBackend) return passthrough()
     const session = getSession(request)
-    if (!session || getUser(session.username)?.roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
+    if (!session || buildUserProfile(session.username, session.tenantId).roles[0] !== 'admin') return fail(403, '仅系统管理员可操作')
     const payload = await request.json() as { password: string }
     return setMockUserPassword(String(params.id), payload.password) ? ok(null, '密码已重置') : fail(404, '用户不存在')
   }),

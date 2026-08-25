@@ -26,7 +26,7 @@ export const setupRouterGuard = (router: Router) => {
       }
     }
 
-    if (to.path === '/login' && authStore.isAuthenticated) {
+    if ((to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {
       return '/dashboard'
     }
 
@@ -58,6 +58,10 @@ export const setupRouterGuard = (router: Router) => {
     //路由的 meta 里定义的权限码，用户想访问需要有对应的码才行
     const permissionCode = to.meta.permission as string | undefined
     if (permissionCode && !permissionStore.hasPermission(permissionCode)) {
+      return '/403'
+    }
+
+    if (to.meta.platformAdmin && !authStore.user?.platformAdmin) {
       return '/403'
     }
 
