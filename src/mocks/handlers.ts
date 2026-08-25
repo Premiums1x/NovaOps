@@ -30,10 +30,12 @@ import {
   refreshSession,
   roles,
   listMockUsers,
+  registerMockUser,
   setMockUserPassword,
   setMockUserRole,
   setMockUserStatus,
   switchTenantSession,
+  verifyMockUser,
 } from './db'
 import {
   buildDashboardMetrics,
@@ -147,6 +149,30 @@ export const handlers = [
       tenantId: session.tenantId,
     }
     return ok(data, '登录成功')
+  }),
+
+  http.post('/api/auth/register', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
+    await delay(300)
+    const payload = (await request.json()) as { username: string; email: string; password: string }
+    try {
+      registerMockUser(payload.username, payload.email, payload.password)
+      return ok(null, '注册成功，请查收激活邮件')
+    } catch (error) {
+      return fail(409, (error as Error).message)
+    }
+  }),
+
+  http.get('/api/auth/verify', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) {
+      return passthrough()
+    }
+    await delay(200)
+    const url = new URL(request.url)
+    const token = url.searchParams.get('token') || ''
+    return verifyMockUser(token) ? ok(null, '激活成功，请登录') : fail(400, '激活链接无效或已使用')
   }),
 
   http.get('/api/auth/roles', async () => {
@@ -361,11 +387,15 @@ export const handlers = [
       return fail(401, 'token 无效')
     }
     const payload = (await request.json()) as TicketActionDto
-    const updated = actionTicketByTenant(session.tenantId, String(params.id), session.username, payload)
-    if (!updated) {
-      return fail(404, '工单不存在')
+    try {
+      const updated = actionTicketByTenant(session.tenantId, String(params.id), session.username, payload)
+      if (!updated) {
+        return fail(404, '工单不存在')
+      }
+      return ok(updated, '工单流转成功')
+    } catch (error) {
+      return fail(409, (error as Error).message)
     }
-    return ok(updated, '工单流转成功')
   }),
 
   http.get('/api/tickets/:id/comments', async ({ request, params }) => {
@@ -520,15 +550,19 @@ export const handlers = [
       return fail(401, 'token 无效')
     }
     const payload = (await request.json()) as AssetActionDto
-    const updated = actionAssetByTenant(session.tenantId, String(params.id), session.username, payload)
-    if (!updated) {
-      return fail(404, '资产不存在')
+    try {
+      const updated = actionAssetByTenant(session.tenantId, String(params.id), session.username, payload)
+      if (!updated) {
+        return fail(404, '资产不存在')
+      }
+      const detail: AssetDetailDto = {
+        ...updated,
+        relatedTickets: listRelatedTicketsByAsset(session.tenantId, updated.id),
+      }
+      return ok(detail, '资产状态更新成功')
+    } catch (error) {
+      return fail(409, (error as Error).message)
     }
-    const detail: AssetDetailDto = {
-      ...updated,
-      relatedTickets: listRelatedTicketsByAsset(session.tenantId, updated.id),
-    }
-    return ok(detail, '资产状态更新成功')
   }),
 
   http.get('/api/dashboard/metrics', async ({ request }) => {
