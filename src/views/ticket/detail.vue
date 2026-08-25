@@ -298,18 +298,22 @@ onMounted(() => {
               </a-list-item>
             </template>
           </a-list>
-          <a-space direction="vertical" style="width: 100%; margin-top: 12px">
-            <a-textarea v-model:value="newComment" :rows="3" placeholder="输入评论..." />
-            <a-button type="primary" :loading="commentLoading" @click="submitComment">发表评论</a-button>
-          </a-space>
+          <Permission code="ticket:comment">
+            <a-space direction="vertical" style="width: 100%; margin-top: 12px">
+              <a-textarea v-model:value="newComment" :rows="3" placeholder="输入评论..." />
+              <a-button type="primary" :loading="commentLoading" @click="submitComment">发表评论</a-button>
+            </a-space>
+          </Permission>
         </a-card>
       </a-col>
 
       <a-col :span="12">
         <a-card title="附件" :bordered="false">
-          <a-upload :show-upload-list="false" :custom-request="handleUpload">
-            <a-button type="dashed">上传附件</a-button>
-          </a-upload>
+          <Permission code="ticket:comment">
+            <a-upload :show-upload-list="false" :custom-request="handleUpload">
+              <a-button type="dashed">上传附件</a-button>
+            </a-upload>
+          </Permission>
           <a-list :data-source="detail?.attachments || []" size="small" class="mt12">
             <template #renderItem="{ item }">
               <a-list-item>
