@@ -56,6 +56,24 @@ export const staticRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/register/index.vue'),
+    meta: {
+      title: '注册',
+      public: true,
+    },
+  },
+  {
+    path: '/verify',
+    name: 'Verify',
+    component: () => import('@/views/verify/index.vue'),
+    meta: {
+      title: '邮箱激活',
+      public: true,
+    },
+  },
+  {
     path: '/403',
     name: 'Forbidden',
     component: () => import('@/views/403/index.vue'),
