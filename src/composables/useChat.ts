@@ -41,9 +41,6 @@ export const useChat = () => {
             if (typeof data.validationPassed === 'boolean') {
               assistant.validationPassed = data.validationPassed
             }
-            if (data.answerMode === 'general_chat' || data.answerMode === 'rag') {
-              assistant.answerMode = data.answerMode
-            }
           }
           if (event === 'error') throw new Error(String(data.message || '问答失败'))
         },

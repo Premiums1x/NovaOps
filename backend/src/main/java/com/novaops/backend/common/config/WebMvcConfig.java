@@ -21,10 +21,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
   public void addInterceptors(InterceptorRegistry registry) {
     registry.addInterceptor(authInterceptor)
         .addPathPatterns("/api/**")
-        .excludePathPatterns("/api/auth/login", "/api/auth/register", "/api/auth/refresh", "/api/auth/roles");
+        .excludePathPatterns("/api/auth/login", "/api/auth/refresh", "/api/auth/roles", "/api/auth/register", "/api/auth/verify");
     // 权限拦截器必须注册在认证拦截器之后：先解析会话，再按注解校验权限码
     registry.addInterceptor(permissionInterceptor)
         .addPathPatterns("/api/**")
-        .excludePathPatterns("/api/auth/login", "/api/auth/register", "/api/auth/refresh", "/api/auth/roles");
+        .excludePathPatterns("/api/auth/login", "/api/auth/refresh", "/api/auth/roles", "/api/auth/register", "/api/auth/verify");
   }
 }

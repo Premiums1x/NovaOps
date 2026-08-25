@@ -11,7 +11,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const submitting = ref(false)
 const roles = ref<RoleDto[]>([])
-const formState = reactive<LoginRequestDto>({ username: '', password: '', tenantId: '', roleId: '' })
+const formState = reactive<LoginRequestDto>({ username: '', password: '', tenantId: 'tenant-a', roleId: '' })
 
 onMounted(async () => {
   try { roles.value = await getRolesApi() } catch { /* 角色加载失败不阻塞页面 */ }
@@ -20,7 +20,7 @@ onMounted(async () => {
 const handleLogin = async () => {
   try {
     submitting.value = true
-    await authStore.login({ ...formState, tenantId: formState.tenantId?.trim() })
+    await authStore.login(formState)
     message.success('登录成功')
     // redirect 只接受站内路径：必须以单个 / 开头，防止外部 URL 借 query 注入跳转
     const redirect = String(route.query.redirect || '')
@@ -47,6 +47,7 @@ const handleLogin = async () => {
       <div class="mobile-brand">NovaOps</div>
       <a-card class="login-card" :bordered="false">
         <header class="login-heading"><span class="eyebrow">WELCOME BACK</span><h2>登录 NovaOps</h2><p>使用您的企业账号继续</p></header>
+        <a-alert type="info" show-icon message="若账号不存在，将按所选身份自动创建（管理员除外）" class="login-alert" />
         <a-form layout="vertical" :model="formState" @finish="handleLogin">
           <a-form-item label="账号" name="username" :rules="[{ required: true, message: '请输入账号' }]">
             <a-input v-model:value="formState.username" placeholder="请输入账号" />
@@ -54,14 +55,15 @@ const handleLogin = async () => {
           <a-form-item label="密码" name="password" :rules="[{ required: true, message: '请输入密码' }]">
             <a-input-password v-model:value="formState.password" placeholder="请输入密码" />
           </a-form-item>
-          <a-form-item label="租户代码" name="tenantId" :rules="[{ required: true, message: '请输入租户代码' }]">
-            <a-input v-model:value="formState.tenantId" autocomplete="organization" placeholder="例如 tenant-a" />
+          <a-form-item label="租户" name="tenantId" :rules="[{ required: true, message: '请选择租户' }]">
+            <a-select v-model:value="formState.tenantId" :options="[{ value: 'tenant-a', label: 'Tenant A' }, { value: 'tenant-b', label: 'Tenant B' }]" />
           </a-form-item>
           <a-form-item label="身份" name="roleId" :rules="[{ required: true, message: '请选择身份' }]">
             <a-select v-model:value="formState.roleId" :options="roles.map(r => ({ value: r.id, label: r.name }))" placeholder="请选择身份" />
           </a-form-item>
           <a-form-item><a-button type="primary" html-type="submit" block :loading="submitting">登录</a-button></a-form-item>
         </a-form>
+        <footer class="login-footer">没有账号？<a @click="router.replace('/register')">去注册</a></footer>
       </a-card>
     </section>
   </main>
@@ -79,6 +81,6 @@ const handleLogin = async () => {
 .brand-metrics span { display: grid; gap: 3px; }.brand-metrics strong { color: #fff; font-size: 18px; }
 .form-panel { display: grid; place-items: center; padding: 48px clamp(28px,5vw,72px); background: var(--nova-surface); }
 .mobile-brand { display: none; }.login-card { width: min(430px,100%); background: transparent; box-shadow: none; }
-.login-heading { margin-bottom: 28px; }.login-heading h2 { margin: 8px 0 5px; color: var(--nova-text); font-size: 30px; }.login-heading p { margin: 0; color: var(--nova-text-secondary); }
+.login-heading { margin-bottom: 28px; }.login-heading h2 { margin: 8px 0 5px; color: var(--nova-text); font-size: 30px; }.login-heading p { margin: 0; color: var(--nova-text-secondary); }.login-alert { margin-bottom: 20px; }.login-footer { margin-top: 16px; text-align: center; color: var(--nova-text-secondary); }.login-footer a { color: #1677ff; }
 @media (max-width: 900px) { .login-page { grid-template-columns: 1fr; }.brand-panel { display: none; }.form-panel { min-height: 100vh; padding: 28px 20px; align-content: center; }.mobile-brand { display: block; margin-bottom: 16px; color: var(--nova-primary); font-size: 24px; font-weight: 800; } }
 </style>

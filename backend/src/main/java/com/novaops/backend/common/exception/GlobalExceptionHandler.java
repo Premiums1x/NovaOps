@@ -11,7 +11,6 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -48,11 +47,6 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(MaxUploadSizeExceededException.class)
   public ResponseEntity<ApiResponse<Object>> handleUploadTooLarge(MaxUploadSizeExceededException exception) {
     return ResponseEntity.ok(ApiResponse.failure(400, "上传文件超过允许的大小上限"));
-  }
-
-  @ExceptionHandler(NoResourceFoundException.class)
-  public ResponseEntity<ApiResponse<Object>> handleNotFound(NoResourceFoundException exception) {
-    return ResponseEntity.status(404).body(ApiResponse.failure(404, "接口不存在"));
   }
 
   @ExceptionHandler(Exception.class)

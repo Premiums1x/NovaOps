@@ -44,12 +44,6 @@ export const staticRoutes: RouteRecordRaw[] = [
         component: () => import('@/views/agent/chat.vue'),
         meta: { title: '智能问答', permission: 'agent:chat', keepAlive: true },
       },
-      {
-        path: '/system/tenants',
-        name: 'TenantInvitationManagement',
-        component: () => import('@/views/system/tenants.vue'),
-        meta: { title: '租户与邀请', platformAdmin: true, keepAlive: true },
-      },
     ],
   },
   {
@@ -63,10 +57,19 @@ export const staticRoutes: RouteRecordRaw[] = [
   },
   {
     path: '/register',
-    name: 'InvitationRegister',
+    name: 'Register',
     component: () => import('@/views/register/index.vue'),
     meta: {
-      title: '邀请注册',
+      title: '注册',
+      public: true,
+    },
+  },
+  {
+    path: '/verify',
+    name: 'Verify',
+    component: () => import('@/views/verify/index.vue'),
+    meta: {
+      title: '邮箱激活',
       public: true,
     },
   },

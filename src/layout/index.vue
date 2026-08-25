@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { MenuProps, TabsProps } from 'ant-design-vue'
+import { message, type MenuProps, type TabsProps } from 'ant-design-vue'
 import {
   AppstoreOutlined,
   BookOutlined,
@@ -105,8 +105,8 @@ const breadcrumbItems = computed(() => {
     }))
 })
 
-const currentTenantName = computed(() =>
-  authStore.user?.tenants.find((item) => item.id === authStore.tenantId)?.name || authStore.tenantId
+const tenantOptions = computed(() =>
+  (authStore.user?.tenants || []).map((item) => ({ label: item.name, value: item.id }))
 )
 
 // 路由变化时：添加 Tab 页签 + 自动展开对应子菜单
@@ -154,6 +154,15 @@ const handleTabEdit: TabsProps['onEdit'] = (targetKey, action) => {
       void router.push(appStore.activeTabPath)
     }
   }
+}
+
+const handleTenantChange = async (tenantId: string) => {
+  if (tenantId === authStore.tenantId) return
+  await authStore.switchTenant(tenantId)
+  await permissionStore.generateRoutes(router)
+  appStore.resetTabs()
+  message.success('租户切换成功')
+  await router.replace('/dashboard')
 }
 
 // 用户下拉操作：目前只有退出登录
@@ -211,7 +220,12 @@ const openAgentChat = () => {
                 <CustomerServiceOutlined />
               </a-button>
             </a-tooltip>
-            <span class="tenant-label" :title="authStore.tenantId">{{ currentTenantName }}</span>
+            <a-select
+              :value="authStore.tenantId"
+              style="width: 160px"
+              :options="tenantOptions"
+              @change="handleTenantChange"
+            />
             <a-dropdown>
               <a class="user-link" @click.prevent>
                 {{ authStore.user?.displayName || authStore.user?.username }}
@@ -295,14 +309,6 @@ const openAgentChat = () => {
 
 .user-link {
   color: var(--nova-text);
-}
-
-.tenant-label {
-  max-width: 180px;
-  overflow: hidden;
-  color: var(--nova-text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .layout-content {

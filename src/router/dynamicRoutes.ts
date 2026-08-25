@@ -16,8 +16,6 @@ const routeComponentMap: Record<string, RouteComponentLoader> = {
   UserManagementView: () => import('@/views/system/users.vue'),
 }
 
-const staticPageComponents = new Set(['TenantInvitationManagementView'])
-
 //后端菜单数据里，有子菜单的父级节点 component 字段存的是 'RouteView'，
 // 叶子节点（实际页面）存的是 'DashboardView' 这种。
 //"component": "RouteView",     // ← 不是实际页面，只是个分组
@@ -33,7 +31,7 @@ export const transformMenuToRoutes = (menus: MenuItemDto[]): RouteRecordRaw[] =>
 
   const travel = (nodes: MenuItemDto[]) => {
     nodes.forEach((node) => {
-      if (isRouteLeaf(node) && !staticPageComponents.has(node.component)) {
+      if (isRouteLeaf(node)) {
         //叶子节点：真正的页面
         //根据组件名从映射表中取出对应的懒加载函数
         const component = routeComponentMap[node.component]
@@ -46,7 +44,6 @@ export const transformMenuToRoutes = (menus: MenuItemDto[]): RouteRecordRaw[] =>
             meta: {
               title: node.title,
               permission: node.permission,
-              platformAdmin: node.component === 'TenantInvitationManagementView',
               keepAlive: node.keepAlive ?? true,
             },
           })

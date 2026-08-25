@@ -12,6 +12,11 @@ const passthrough = defineComponent({ template: '<div><slot /></div>' })
 const clickableButton = defineComponent({ emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' })
 const dropdown = defineComponent({ template: '<div><slot /><slot name="overlay" /></div>' })
 const menu = defineComponent({ emits: ['click'], template: '<ul><slot /></ul>' })
+const select = defineComponent({
+  props: ['value', 'options'],
+  emits: ['change'],
+  template: '<select :value="value"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>',
+})
 const stubs = {
   'a-layout': passthrough,
   'a-layout-sider': passthrough,
@@ -26,6 +31,7 @@ const stubs = {
   'a-space': defineComponent({ template: '<div class="space"><slot /></div>' }),
   'a-tooltip': passthrough,
   'a-dropdown': dropdown,
+  'a-select': select,
   ThemeSettings: defineComponent({ template: '<button class="theme-settings">theme</button>' }),
   RouterView: defineComponent({ template: '<div />' }),
 }
@@ -43,7 +49,7 @@ const mountLayout = async (permissions: string[]) => {
   await router.push('/dashboard')
   await router.isReady()
   const authStore = useAuthStore(pinia)
-  authStore.user = { id: 'u-1', username: 'nova', displayName: 'Nova', roles: [], permissions: [], tenantId: 't-1', tenants: [], platformAdmin: false }
+  authStore.user = { id: 'u-1', username: 'nova', displayName: 'Nova', roles: [], permissions: [], tenantId: 't-1', tenants: [] }
   const permissionStore = usePermissionStore(pinia)
   permissionStore.codes = permissions
   return { router, wrapper: mount(Layout, { global: { plugins: [pinia, router], stubs } }) }
@@ -75,7 +81,7 @@ describe('layout agent entry', () => {
     expect(wrapper.find('.ant-float-btn').exists()).toBe(false)
   })
 
-  it('shows only the current tenant and does not expose a tenant switch control', async () => {
+  it('keeps the tenant switch control supported by the backend', async () => {
     const { wrapper } = await mountLayout([])
     const authStore = useAuthStore()
     authStore.tenantId = 'tenant-a'
@@ -85,8 +91,9 @@ describe('layout agent entry', () => {
     ]
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('.tenant-label').text()).toBe('Tenant A')
-    expect(wrapper.find('a-select').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('Tenant B')
+    const tenantSelect = wrapper.get('select')
+    expect((tenantSelect.element as HTMLSelectElement).value).toBe('tenant-a')
+    expect(tenantSelect.text()).toContain('Tenant A')
+    expect(tenantSelect.text()).toContain('Tenant B')
   })
 })

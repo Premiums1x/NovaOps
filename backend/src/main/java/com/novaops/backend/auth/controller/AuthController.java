@@ -7,6 +7,7 @@ import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
 import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
+import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
 import com.novaops.backend.auth.dto.UserListItemResponse;
@@ -43,13 +44,25 @@ public class AuthController {
   }
 
   @PostMapping("/register")
-  public ApiResponse<LoginResponse> register(@Valid @RequestBody RegisterRequest request) {
-    return ApiResponse.success(authService.register(request), "注册成功");
+  public ApiResponse<Void> register(@Valid @RequestBody RegisterRequest request) {
+    authService.register(request);
+    return ApiResponse.success(null, "注册成功，请查收激活邮件");
+  }
+
+  @GetMapping("/verify")
+  public ApiResponse<Void> verify(@org.springframework.web.bind.annotation.RequestParam("token") String token) {
+    authService.verify(token);
+    return ApiResponse.success(null, "激活成功，请登录");
   }
 
   @PostMapping("/refresh")
   public ApiResponse<AuthTokenResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
     return ApiResponse.success(authService.refresh(request), "刷新成功");
+  }
+
+  @PostMapping("/switch-tenant")
+  public ApiResponse<LoginResponse> switchTenant(@Valid @RequestBody SwitchTenantRequest request) {
+    return ApiResponse.success(authService.switchTenant(RequestContext.getRequired(), request), "租户切换成功");
   }
 
   @GetMapping("/me")

@@ -8,14 +8,16 @@ import com.novaops.backend.auth.dto.MenuItemResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
 import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
+import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.TenantInfoResponse;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
 import com.novaops.backend.auth.dto.UserListItemResponse;
 import com.novaops.backend.common.api.PageResult;
+import com.novaops.backend.auth.mail.EmailSender;
 import com.novaops.backend.auth.mapper.AuthMapper;
+import com.novaops.backend.auth.model.EmailVerificationRecord;
 import com.novaops.backend.auth.model.MenuRecord;
-import com.novaops.backend.auth.model.InvitationRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
 import com.novaops.backend.auth.model.TenantRecord;
 import com.novaops.backend.auth.model.UserRecord;
@@ -28,7 +30,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,12 +42,14 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final JwtService jwtService;
   private final LoginFailureGuard loginFailureGuard;
+  private final EmailSender emailSender;
 
-  public AuthService(AuthMapper authMapper, PasswordEncoder passwordEncoder, JwtService jwtService, LoginFailureGuard loginFailureGuard) {
+  public AuthService(AuthMapper authMapper, PasswordEncoder passwordEncoder, JwtService jwtService, LoginFailureGuard loginFailureGuard, EmailSender emailSender) {
     this.authMapper = authMapper;
     this.passwordEncoder = passwordEncoder;
     this.jwtService = jwtService;
     this.loginFailureGuard = loginFailureGuard;
+    this.emailSender = emailSender;
   }
 
   @Transactional
@@ -58,11 +61,13 @@ public class AuthService {
     String tenantId = StringUtils.hasText(request.getTenantId()) ? request.getTenantId() : "tenant-a";
 
     if (user == null) {
+      // 用户不存在 → 不再自助注册，统一返回模糊错误避免账号枚举
       loginFailureGuard.recordFailure(request.getUsername());
       throw new BusinessException(403, "账号或密码错误");
     }
+
     if (!Boolean.TRUE.equals(user.getEnabled())) {
-      throw new BusinessException(403, "账号已被禁用");
+      throw new BusinessException(403, "账号未激活或已被禁用");
     }
     if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
       loginFailureGuard.recordFailure(request.getUsername());
@@ -78,33 +83,59 @@ public class AuthService {
     return issueLoginSession(user, tenantId);
   }
 
+  /** 显式注册：创建未激活账号（enabled=0），生成验证 token 并发送激活邮件。 */
   @Transactional
-  public LoginResponse register(RegisterRequest request) {
-    InvitationRecord invitation = authMapper.findInvitationByTokenHashForUpdate(SystemService.sha256(request.getInvitationToken()));
-    if (invitation == null) {
-      throw new BusinessException(400, "邀请无效");
+  public void register(RegisterRequest request) {
+    String username = request.getUsername().trim();
+    String email = request.getEmail().trim().toLowerCase();
+
+    if (authMapper.findUserByUsername(username) != null) {
+      throw new BusinessException(409, "账号已存在");
     }
-    if (invitation.getUsedAt() != null) {
-      throw new BusinessException(400, "邀请已使用");
-    }
-    LocalDateTime now = LocalDateTime.now();
-    if (invitation.getExpiresAt() == null || !invitation.getExpiresAt().isAfter(now)) {
-      throw new BusinessException(400, "邀请已过期");
-    }
-    RoleResponse role = authMapper.findRoleById(invitation.getRoleId());
-    if (role == null || (!"staff".equals(role.getCode()) && !"guest".equals(role.getCode()))) {
-      throw new BusinessException(400, "邀请身份无效");
-    }
-    if (authMapper.findUserByUsername(request.getUsername()) != null) {
-      throw new BusinessException(400, "用户名已存在");
+    if (authMapper.findUserByEmail(email) != null) {
+      throw new BusinessException(409, "邮箱已被注册");
     }
 
-    UserRecord user = createUser(
-        request.getUsername(), request.getPassword(), request.getDisplayName(), invitation.getTenantId(), role.getId());
-    if (authMapper.consumeInvitation(invitation.getId(), now) != 1) {
-      throw new BusinessException(400, "邀请已使用或已过期");
+    RoleResponse memberRole = authMapper.findRoleById("role-member");
+    if (memberRole == null) {
+      throw new BusinessException(500, "默认身份未配置");
     }
-    return issueLoginSession(user, invitation.getTenantId());
+
+    UserRecord user = new UserRecord();
+    user.setId(IdGenerator.randomId("usr"));
+    user.setUsername(username);
+    user.setEmail(email);
+    user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    user.setDisplayName(username);
+    user.setRoleId(memberRole.getId());
+    authMapper.insertUser(user);
+    // 过渡期：单租户方向，注册用户默认绑定 tenant-a（去租户阶段统一移除）
+    authMapper.insertUserTenant(user.getId(), "tenant-a");
+
+    String token = IdGenerator.randomId("ev");
+    authMapper.insertEmailVerification(token, user.getId(), "register", LocalDateTime.now().plusHours(24));
+    emailSender.sendVerificationEmail(email, token);
+  }
+
+  /** 邮箱激活：校验 token 后启用账号并强制首次改密。 */
+  @Transactional
+  public void verify(String token) {
+    EmailVerificationRecord record = authMapper.findEmailVerification(token);
+    if (record == null || Boolean.TRUE.equals(record.getUsed())) {
+      throw new BusinessException(400, "激活链接无效或已使用");
+    }
+    if (record.getExpiresAt().isBefore(LocalDateTime.now())) {
+      throw new BusinessException(400, "激活链接已过期");
+    }
+    UserRecord user = authMapper.findUserById(record.getUserId());
+    if (user == null) {
+      throw new BusinessException(404, "用户不存在");
+    }
+    if (Boolean.TRUE.equals(user.getEnabled())) {
+      throw new BusinessException(400, "账号已激活，请直接登录");
+    }
+    authMapper.activateUser(user.getId());
+    authMapper.markEmailVerificationUsed(token);
   }
 
   public AuthTokenResponse refresh(RefreshTokenRequest request) {
@@ -128,6 +159,15 @@ public class AuthService {
     return buildTokenResponse(user, record.getTenantId(), rotatedRefreshToken);
   }
 
+  public LoginResponse switchTenant(CurrentSession session, SwitchTenantRequest request) {
+    validateTenantAccess(session.getUserId(), request.getTenantId());
+    UserRecord user = authMapper.findUserById(session.getUserId());
+    if (user == null) {
+      throw new BusinessException(401, "token 无效，无法切换租户");
+    }
+    return issueLoginSession(user, request.getTenantId());
+  }
+
   public UserProfileResponse me(CurrentSession session) {
     UserRecord user = authMapper.findUserById(session.getUserId());
     if (user == null) {
@@ -142,7 +182,6 @@ public class AuthService {
     response.setPermissions(authMapper.listPermissions(user.getId(), session.getTenantId()));
     response.setTenantId(session.getTenantId());
     response.setTenants(authMapper.listTenantsByUserId(user.getId()).stream().map(this::toTenantInfo).toList());
-    response.setPlatformAdmin(Boolean.TRUE.equals(user.getPlatformAdmin()));
     return response;
   }
 
@@ -155,12 +194,7 @@ public class AuthService {
     List<String> permissions = authMapper.listPermissions(user.getId(), session.getTenantId());
     List<String> roles = authMapper.listRolesByUserId(user.getId());
     String menuScope = roles.isEmpty() ? "guest" : resolveMenuScopeByRole(roles.get(0));
-    List<MenuRecord> menuRecords = new ArrayList<>(authMapper.listMenusByScope(menuScope).stream()
-        .filter(menu -> !StringUtils.hasText(menu.getPermissionCode()) || permissions.contains(menu.getPermissionCode()))
-        .toList());
-    if (Boolean.TRUE.equals(user.getPlatformAdmin())) {
-      menuRecords.addAll(authMapper.listMenusByScope("platform"));
-    }
+    List<MenuRecord> menuRecords = authMapper.listMenusByScope(menuScope);
     MenuDataResponse response = new MenuDataResponse();
     response.setPermissions(permissions);
     response.setMenus(buildMenuTree(menuRecords));
@@ -192,7 +226,6 @@ public class AuthService {
 
   public void updateUserRole(CurrentSession session, String userId, String roleId) {
     requireAdmin(session);
-    if (session.getUserId().equals(userId)) throw new BusinessException(400, "不能修改当前登录账号的身份");
     if (authMapper.findRoleById(roleId) == null) throw new BusinessException(400, "身份不存在");
     requireUser(userId);
     authMapper.updateUserRole(userId, roleId);
@@ -264,24 +297,8 @@ public class AuthService {
     }
   }
 
-  private UserRecord createUser(String username, String password, String displayName, String tenantId, String roleId) {
-    UserRecord user = new UserRecord();
-    user.setId(IdGenerator.randomId("usr"));
-    user.setUsername(username);
-    user.setPasswordHash(passwordEncoder.encode(password));
-    user.setDisplayName(displayName);
-    user.setRoleId(roleId);
-    try {
-      authMapper.insertUser(user);
-    } catch (DuplicateKeyException exception) {
-      throw new BusinessException(400, "用户名已存在");
-    }
-    authMapper.insertUserTenant(user.getId(), tenantId);
-    return user;
-  }
-
   private String resolveMenuScopeByRole(String roleCode) {
-    if ("guest".equals(roleCode)) {
+    if ("guest".equals(roleCode) || "member".equals(roleCode)) {
       return "guest";
     }
     if ("staff".equals(roleCode)) {
@@ -326,18 +343,15 @@ public class AuthService {
       }
     }
 
-    roots.forEach(this::pruneEmptyGroups);
-    roots.removeIf(menu -> "RouteView".equals(menu.getComponent()) && menu.getChildren() == null);
+    roots.forEach(this::normalizeChildren);
     return roots;
   }
 
-  private void pruneEmptyGroups(MenuItemResponse menu) {
+  private void normalizeChildren(MenuItemResponse menu) {
     if (menu.getChildren() == null || menu.getChildren().isEmpty()) {
       menu.setChildren(null);
       return;
     }
-    menu.getChildren().forEach(this::pruneEmptyGroups);
-    menu.getChildren().removeIf(child -> "RouteView".equals(child.getComponent()) && child.getChildren() == null);
-    if (menu.getChildren().isEmpty()) menu.setChildren(null);
+    menu.getChildren().forEach(this::normalizeChildren);
   }
 }
