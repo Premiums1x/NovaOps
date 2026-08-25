@@ -13,7 +13,10 @@ const clickableButton = defineComponent({ emits: ['click'], template: '<button @
 const dropdown = defineComponent({ template: '<div><slot /><slot name="overlay" /></div>' })
 const menu = defineComponent({ emits: ['click'], template: '<ul><slot /></ul>' })
 const select = defineComponent({
-  props: ['value', 'options'],
+  props: {
+    value: { type: String, required: true },
+    options: { type: Array, default: () => [] },
+  },
   emits: ['change'],
   template: '<select :value="value"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>',
 })
