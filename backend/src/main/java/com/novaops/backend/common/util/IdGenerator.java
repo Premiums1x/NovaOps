@@ -21,6 +21,12 @@ public final class IdGenerator {
     return tenantPrefix(tenantId) + "-TICKET-" + random;
   }
 
+  /** 资产业务编号：租户前缀 + 随机段，保证全局唯一且可读。 */
+  public static String assetNo(String tenantId) {
+    String random = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+    return tenantPrefix(tenantId) + "-ASSET-" + random;
+  }
+
   private static String tenantPrefix(String tenantId) {
     if ("tenant-a".equals(tenantId)) {
       return "A";
