@@ -254,12 +254,13 @@ export const updateTicketByTenant = (
   return clone(ticket)
 }
 
-const resolveAdvanceStatus = (status: TicketStatus): TicketStatus => {
-  const index = statusFlow.indexOf(status)
-  if (index >= statusFlow.length - 1) {
-    return status
-  }
-  return statusFlow[index + 1] || status
+const ILLEGAL_TRANSITION_MSG: Record<string, string> = {
+  assign: '已完成的工单不可再指派',
+  transfer: '已完成的工单不可再转派',
+  advance: '仅处理中的工单可提交复核',
+  approve: '仅待复核的工单可复核通过',
+  reject: '仅待复核的工单可驳回',
+  close: '待处理的工单不可直接关闭，或工单已关闭',
 }
 
 export const actionTicketByTenant = (
@@ -275,6 +276,28 @@ export const actionTicketByTenant = (
   const previousStatus = ticket.status
   const now = dayjs().toISOString()
 
+  // 状态机前置校验（与后端 TicketService.validateTransition 保持一致）
+  const validate = (action: TicketActionType, status: TicketStatus): boolean => {
+    switch (action) {
+      case 'assign':
+      case 'transfer':
+        return status !== 'done'
+      case 'advance':
+        return status === 'processing'
+      case 'approve':
+        return status === 'review'
+      case 'reject':
+        return status === 'review'
+      case 'close':
+        return status === 'processing' || status === 'review'
+      default:
+        return false
+    }
+  }
+  if (!validate(payload.action, ticket.status)) {
+    throw new Error(ILLEGAL_TRANSITION_MSG[payload.action] || '非法状态流转')
+  }
+
   switch (payload.action) {
     case 'assign':
       ticket.assignee = payload.assignee || ticket.assignee
@@ -284,16 +307,21 @@ export const actionTicketByTenant = (
       break
     case 'transfer':
       ticket.assignee = payload.targetUser || ticket.assignee
-      ticket.status = 'processing'
-      break
-    case 'reject':
-      ticket.status = 'processing'
-      break
-    case 'close':
-      ticket.status = 'done'
+      if (ticket.status === 'review') {
+        ticket.status = 'processing'
+      }
       break
     case 'advance':
-      ticket.status = resolveAdvanceStatus(ticket.status)
+      ticket.status = 'review' // processing → review（提交复核）
+      break
+    case 'approve':
+      ticket.status = 'done' // review → done（复核通过）
+      break
+    case 'reject':
+      ticket.status = 'processing' // review → processing（驳回）
+      break
+    case 'close':
+      ticket.status = 'done' // processing/review → done（关闭）
       break
     default:
       break
