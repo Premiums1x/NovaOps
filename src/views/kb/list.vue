@@ -27,7 +27,7 @@ onMounted(fetchList);onBeforeUnmount(stopPolling)
 
 <template>
   <a-card title="知识库管理">
-    <template #extra><a-upload :show-upload-list="false" :before-upload="beforeUpload" accept=".md,.pdf,.doc,.docx"><a-button type="primary" :loading="uploading">上传文档</a-button></a-upload></template>
+    <template #extra><Permission code="kb:edit"><a-upload :show-upload-list="false" :before-upload="beforeUpload" accept=".md,.pdf,.doc,.docx"><a-button type="primary" :loading="uploading">上传文档</a-button></a-upload></Permission></template>
     <a-alert type="info" show-icon message="上传后将自动解析、分块并向量化；支持 md、pdf、doc、docx，最大 30MB。" class="hint" />
     <a-form layout="inline" class="filters">
       <a-form-item><a-input v-model:value="filters.keyword" allow-clear placeholder="文件名或标题" /></a-form-item>
@@ -39,7 +39,7 @@ onMounted(fetchList);onBeforeUnmount(stopPolling)
       <template #bodyCell="{column,record}">
         <template v-if="column.key==='status'"><a-tooltip v-if="record.errorMsg" :title="record.errorMsg"><a-tag :color="statusMeta[record.status as KbDocumentStatus].color">{{statusMeta[record.status as KbDocumentStatus].label}}</a-tag></a-tooltip><a-tag v-else :color="statusMeta[record.status as KbDocumentStatus].color">{{statusMeta[record.status as KbDocumentStatus].label}}</a-tag></template>
         <template v-else-if="column.key==='updatedAt'">{{dayjs(record.updatedAt).format('YYYY-MM-DD HH:mm')}}</template>
-        <template v-else-if="column.key==='actions'"><a-space><a-button type="link" size="small" :disabled="record.status!=='READY'" @click="showChunks(record as KbDocumentDto)">分块预览</a-button><a-button type="link" size="small" @click="editTitle(record as KbDocumentDto)">改标题</a-button><a-button type="link" danger size="small" @click="remove(record as KbDocumentDto)">删除</a-button></a-space></template>
+        <template v-else-if="column.key==='actions'"><a-space><a-button type="link" size="small" :disabled="record.status!=='READY'" @click="showChunks(record as KbDocumentDto)">分块预览</a-button><Permission code="kb:edit"><a-button type="link" size="small" @click="editTitle(record as KbDocumentDto)">改标题</a-button></Permission><Permission code="kb:edit"><a-button type="link" danger size="small" @click="remove(record as KbDocumentDto)">删除</a-button></Permission></a-space></template>
       </template>
     </a-table>
     <a-drawer v-model:open="drawerOpen" width="min(720px, 92vw)" :title="`${selected?.title||''} · 分块预览`"><a-list :data-source="chunks"><template #renderItem="{item}"><a-list-item><a-card size="small" :title="`Chunk ${item.chunkIndex+1}`" class="chunk-card">{{item.content}}</a-card></a-list-item></template></a-list></a-drawer>
