@@ -6,8 +6,11 @@ drop table if exists agent_message;
 drop table if exists agent_conversation;
 drop table if exists biz_ticket_comment;
 drop table if exists biz_ticket_asset_rel;
+drop table if exists biz_asset_log;
+drop table if exists biz_asset;
 drop table if exists biz_ticket_timeline;
 drop table if exists biz_ticket;
+drop table if exists sys_email_verification;
 drop table if exists sys_refresh_token;
 drop table if exists sys_user_tenant;
 drop table if exists sys_role_permission;
@@ -18,21 +21,18 @@ drop table if exists sys_role;
 drop table if exists sys_user;
 drop table if exists sys_tenant;
 
-create table sys_tenant (
-  id varchar(64) primary key,
-  name varchar(100) not null,
-  sort_order int not null default 0
-);
-
 create table sys_user (
   id varchar(64) primary key,
   username varchar(64) not null unique,
+  email varchar(128) null,
   password_hash varchar(255) not null,
   display_name varchar(100) not null,
   role_id varchar(64) not null,
   enabled tinyint not null default 1,
+  must_change_password tinyint not null default 0,
   deleted tinyint not null default 0,
-  created_at datetime not null default current_timestamp
+  created_at datetime not null default current_timestamp,
+  unique key uk_user_email (email)
 );
 
 create table sys_role (
@@ -66,23 +66,25 @@ create table sys_menu (
 create table sys_role_permission (
   role_id varchar(64) not null,
   permission_id varchar(64) not null,
-  tenant_id varchar(64) not null,
-  primary key (role_id, permission_id, tenant_id)
-);
-
-create table sys_user_tenant (
-  user_id varchar(64) not null,
-  tenant_id varchar(64) not null,
-  primary key (user_id, tenant_id)
+  primary key (role_id, permission_id)
 );
 
 create table sys_refresh_token (
   token varchar(128) primary key,
   user_id varchar(64) not null,
-  tenant_id varchar(64) not null,
   expires_at datetime not null,
   revoked tinyint not null default 0,
   created_at datetime not null default current_timestamp
+);
+
+create table sys_email_verification (
+  token varchar(128) primary key,
+  user_id varchar(64) not null,
+  purpose varchar(32) not null,
+  expires_at datetime not null,
+  used tinyint not null default 0,
+  created_at datetime not null default current_timestamp,
+  index idx_email_verification_user (user_id, purpose)
 );
 
 create table kb_document (
@@ -190,9 +192,38 @@ create table biz_ticket_attachment (
   index idx_ticket_attachment_ticket (ticket_id, created_at desc)
 );
 
-insert into sys_tenant (id, name, sort_order) values
-  ('tenant-a', 'Tenant A', 10),
-  ('tenant-b', 'Tenant B', 20);
+create table biz_asset (
+  id varchar(64) primary key,
+  tenant_id varchar(64) not null,
+  asset_no varchar(64) not null,
+  name varchar(200) not null,
+  type varchar(32) not null,
+  status varchar(32) not null,
+  owner_id varchar(64) null,
+  location varchar(200),
+  spec text,
+  remark text,
+  purchase_date date,
+  version int not null default 0,
+  created_at datetime not null,
+  updated_at datetime not null,
+  deleted tinyint not null default 0,
+  unique key uk_asset_tenant_no (tenant_id, asset_no),
+  index idx_asset_status (tenant_id, status),
+  index idx_asset_owner (tenant_id, owner_id)
+);
+
+create table biz_asset_log (
+  id varchar(64) primary key,
+  asset_id varchar(64) not null,
+  tenant_id varchar(64) not null,
+  action varchar(32) not null,
+  operator_id varchar(64) not null,
+  target_user_id varchar(64) null,
+  remark varchar(255) null,
+  created_at datetime not null,
+  index idx_asset_log_asset (asset_id, created_at desc)
+);
 
 insert into sys_user (id, username, password_hash, display_name, role_id, enabled, deleted) values
   ('u-admin', 'admin', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'System Admin', 'role-admin', 1, 0),
@@ -202,7 +233,8 @@ insert into sys_user (id, username, password_hash, display_name, role_id, enable
 insert into sys_role (id, code, name, description, sort_order) values
   ('role-admin', 'admin', '管理员', '管理用户、身份、知识库以及全部业务数据', 10),
   ('role-staff', 'staff', '运维人员', '处理工单、资产与使用智能问答', 20),
-  ('role-guest', 'guest', '访客', '只读访问授权看板与智能问答', 30);
+  ('role-guest', 'guest', '访客', '只读访问授权看板与智能问答', 30),
+  ('role-member', 'member', '普通成员', '注册用户默认身份：只读看板、提交工单与智能问答', 40);
 
 insert into sys_permission (id, code, name) values
   ('perm-dashboard-view', 'dashboard:view', '查看看板'),
@@ -213,7 +245,9 @@ insert into sys_permission (id, code, name) values
   ('perm-ticket-transfer', 'ticket:transfer', '转派工单'),
   ('perm-ticket-close', 'ticket:close', '关闭工单'),
   ('perm-ticket-comment', 'ticket:comment', '评论工单'),
-  ('perm-ticket-advance', 'ticket:advance', '推进或驳回工单'),
+  ('perm-ticket-advance', 'ticket:advance', '提交复核工单'),
+  ('perm-ticket-approve', 'ticket:approve', '复核通过工单'),
+  ('perm-ticket-reject', 'ticket:reject', '驳回复核工单'),
   ('perm-asset-view', 'asset:view', '查看资产'),
   ('perm-asset-create', 'asset:create', '新增资产'),
   ('perm-asset-edit', 'asset:edit', '编辑资产'),
@@ -224,69 +258,45 @@ insert into sys_permission (id, code, name) values
   ('perm-auth-user-manage', 'auth:user:manage', '管理用户与身份'),
   ('perm-agent-chat', 'agent:chat', '使用智能问答');
 
-insert into sys_user_tenant (user_id, tenant_id) values
-  ('u-admin', 'tenant-a'),
-  ('u-admin', 'tenant-b'),
-  ('u-staff', 'tenant-a'),
-  ('u-staff', 'tenant-b'),
-  ('u-guest', 'tenant-a'),
-  ('u-guest', 'tenant-b');
-
-insert into sys_role_permission (role_id, permission_id, tenant_id) values
-  ('role-admin', 'perm-agent-chat', 'tenant-a'),
-  ('role-admin', 'perm-agent-chat', 'tenant-b'),
-  ('role-staff', 'perm-agent-chat', 'tenant-a'),
-  ('role-staff', 'perm-agent-chat', 'tenant-b'),
-  ('role-guest', 'perm-agent-chat', 'tenant-a'),
-  ('role-guest', 'perm-agent-chat', 'tenant-b'),
-  ('role-admin', 'perm-auth-user-manage', 'tenant-a'),
-  ('role-admin', 'perm-auth-user-manage', 'tenant-b'),
-  ('role-admin', 'perm-dashboard-view', 'tenant-a'),
-  ('role-admin', 'perm-ticket-view', 'tenant-a'),
-  ('role-admin', 'perm-ticket-create', 'tenant-a'),
-  ('role-admin', 'perm-ticket-edit', 'tenant-a'),
-  ('role-admin', 'perm-ticket-assign', 'tenant-a'),
-  ('role-admin', 'perm-ticket-transfer', 'tenant-a'),
-  ('role-admin', 'perm-ticket-close', 'tenant-a'),
-  ('role-admin', 'perm-ticket-comment', 'tenant-a'),
-  ('role-admin', 'perm-ticket-advance', 'tenant-a'),
-  ('role-admin', 'perm-asset-view', 'tenant-a'),
-  ('role-admin', 'perm-asset-create', 'tenant-a'),
-  ('role-admin', 'perm-asset-edit', 'tenant-a'),
-  ('role-admin', 'perm-asset-claim', 'tenant-a'),
-  ('role-admin', 'perm-asset-scrap', 'tenant-a'),
-  ('role-admin', 'perm-kb-view', 'tenant-a'),
-  ('role-admin', 'perm-kb-edit', 'tenant-a'),
-  ('role-admin', 'perm-dashboard-view', 'tenant-b'),
-  ('role-admin', 'perm-ticket-view', 'tenant-b'),
-  ('role-admin', 'perm-ticket-create', 'tenant-b'),
-  ('role-admin', 'perm-ticket-edit', 'tenant-b'),
-  ('role-admin', 'perm-ticket-close', 'tenant-b'),
-  ('role-admin', 'perm-ticket-comment', 'tenant-b'),
-  ('role-admin', 'perm-ticket-advance', 'tenant-b'),
-  ('role-admin', 'perm-asset-view', 'tenant-b'),
-  ('role-admin', 'perm-asset-create', 'tenant-b'),
-  ('role-admin', 'perm-asset-edit', 'tenant-b'),
-  ('role-admin', 'perm-asset-claim', 'tenant-b'),
-  ('role-admin', 'perm-asset-scrap', 'tenant-b'),
-  ('role-admin', 'perm-kb-view', 'tenant-b'),
-  ('role-admin', 'perm-kb-edit', 'tenant-b'),
-  ('role-staff', 'perm-dashboard-view', 'tenant-a'),
-  ('role-staff', 'perm-ticket-view', 'tenant-a'),
-  ('role-staff', 'perm-ticket-create', 'tenant-a'),
-  ('role-staff', 'perm-ticket-assign', 'tenant-a'),
-  ('role-staff', 'perm-ticket-advance', 'tenant-a'),
-  ('role-staff', 'perm-ticket-comment', 'tenant-a'),
-  ('role-staff', 'perm-asset-view', 'tenant-a'),
-  ('role-staff', 'perm-asset-claim', 'tenant-a'),
-  ('role-staff', 'perm-dashboard-view', 'tenant-b'),
-  ('role-staff', 'perm-ticket-view', 'tenant-b'),
-  ('role-staff', 'perm-ticket-create', 'tenant-b'),
-  ('role-staff', 'perm-ticket-advance', 'tenant-b'),
-  ('role-staff', 'perm-ticket-comment', 'tenant-b'),
-  ('role-staff', 'perm-asset-view', 'tenant-b'),
-  ('role-guest', 'perm-dashboard-view', 'tenant-a'),
-  ('role-guest', 'perm-dashboard-view', 'tenant-b');
+insert into sys_role_permission (role_id, permission_id) values
+  -- admin：全部权限
+  ('role-admin', 'perm-agent-chat'),
+  ('role-admin', 'perm-auth-user-manage'),
+  ('role-admin', 'perm-dashboard-view'),
+  ('role-admin', 'perm-ticket-view'),
+  ('role-admin', 'perm-ticket-create'),
+  ('role-admin', 'perm-ticket-edit'),
+  ('role-admin', 'perm-ticket-assign'),
+  ('role-admin', 'perm-ticket-transfer'),
+  ('role-admin', 'perm-ticket-close'),
+  ('role-admin', 'perm-ticket-comment'),
+  ('role-admin', 'perm-ticket-advance'),
+  ('role-admin', 'perm-ticket-approve'),
+  ('role-admin', 'perm-ticket-reject'),
+  ('role-admin', 'perm-asset-view'),
+  ('role-admin', 'perm-asset-create'),
+  ('role-admin', 'perm-asset-edit'),
+  ('role-admin', 'perm-asset-claim'),
+  ('role-admin', 'perm-asset-scrap'),
+  ('role-admin', 'perm-kb-view'),
+  ('role-admin', 'perm-kb-edit'),
+  -- staff：运维人员
+  ('role-staff', 'perm-agent-chat'),
+  ('role-staff', 'perm-dashboard-view'),
+  ('role-staff', 'perm-ticket-view'),
+  ('role-staff', 'perm-ticket-create'),
+  ('role-staff', 'perm-ticket-assign'),
+  ('role-staff', 'perm-ticket-advance'),
+  ('role-staff', 'perm-ticket-comment'),
+  ('role-staff', 'perm-asset-view'),
+  ('role-staff', 'perm-asset-claim'),
+  -- guest：访客
+  ('role-guest', 'perm-dashboard-view'),
+  ('role-guest', 'perm-agent-chat'),
+  -- member：普通成员（注册默认）
+  ('role-member', 'perm-dashboard-view'),
+  ('role-member', 'perm-ticket-create'),
+  ('role-member', 'perm-agent-chat');
 
 insert into sys_menu (id, title, name, path, component, icon, permission_code, keep_alive, parent_id, sort_order, menu_scope) values
   ('full-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'full'),
