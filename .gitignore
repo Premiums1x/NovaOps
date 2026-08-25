@@ -21,6 +21,7 @@ coverage
 .eslintcache
 *.tsbuildinfo
 *.local
+.worktrees/
 
 #后端
 backend/target
