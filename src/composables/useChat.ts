@@ -37,14 +37,23 @@ export const useChat = () => {
           if (typeof data.conversationId === 'string') store.conversationId = data.conversationId
           if (event === 'delta') assistant.content += String(data.content || '')
           if (event === 'citation') assistant.citations = (data.citations || []) as CitationDto[]
-          if (event === 'meta') assistant.validationPassed = Boolean(data.validationPassed)
+          if (event === 'meta') {
+            if (typeof data.validationPassed === 'boolean') {
+              assistant.validationPassed = data.validationPassed
+            }
+            if (data.answerMode === 'general_chat' || data.answerMode === 'rag') {
+              assistant.answerMode = data.answerMode
+            }
+          }
           if (event === 'error') throw new Error(String(data.message || '问答失败'))
         },
         sharedController.signal,
       )
       await store.loadConversations()
     } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
+      if ((error as Error).name === 'AbortError') {
+        assistant.content = assistant.content || '已停止生成。'
+      } else {
         store.lastError = (error as Error).message
         assistant.content = assistant.content || '服务暂时不可用，请稍后重试。'
         message.error(store.lastError)
