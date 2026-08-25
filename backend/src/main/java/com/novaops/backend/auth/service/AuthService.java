@@ -6,8 +6,8 @@ import com.novaops.backend.auth.dto.LoginResponse;
 import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.MenuItemResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
+import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
-import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.TenantInfoResponse;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
@@ -15,6 +15,7 @@ import com.novaops.backend.auth.dto.UserListItemResponse;
 import com.novaops.backend.common.api.PageResult;
 import com.novaops.backend.auth.mapper.AuthMapper;
 import com.novaops.backend.auth.model.MenuRecord;
+import com.novaops.backend.auth.model.InvitationRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
 import com.novaops.backend.auth.model.TenantRecord;
 import com.novaops.backend.auth.model.UserRecord;
@@ -27,6 +28,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,39 +58,53 @@ public class AuthService {
     String tenantId = StringUtils.hasText(request.getTenantId()) ? request.getTenantId() : "tenant-a";
 
     if (user == null) {
-      // 用户不存在 → 自助注册。管理员账号不允许自助创建（防止任何人
-      // 直接注册出 admin 身份），租户必须是系统里真实存在的租户
-      RoleResponse role = authMapper.findRoleById(request.getRoleId());
-      if (role == null) {
-        throw new BusinessException(403, "身份不存在");
-      }
-      if ("admin".equals(role.getCode())) {
-        throw new BusinessException(403, "管理员账号不支持自助注册，请联系系统管理员创建");
-      }
-      if (authMapper.findTenantById(tenantId) == null) {
-        throw new BusinessException(403, "租户不存在");
-      }
-      user = createUser(request.getUsername(), request.getPassword(), request.getUsername(), tenantId, role.getId());
-    } else {
-      if (!Boolean.TRUE.equals(user.getEnabled())) {
-        throw new BusinessException(403, "账号已被禁用");
-      }
-      // 用户存在 → 校验密码
-      if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-        loginFailureGuard.recordFailure(request.getUsername());
-        throw new BusinessException(403, "账号或密码错误");
-      }
-      // 校验租户
-      validateTenantAccess(user.getId(), tenantId);
-      // 校验角色：用户绑定唯一身份，直接比对 roleId
-      if (!user.getRoleId().equals(request.getRoleId())) {
-        loginFailureGuard.recordFailure(request.getUsername());
-        throw new BusinessException(403, "身份不匹配");
-      }
+      loginFailureGuard.recordFailure(request.getUsername());
+      throw new BusinessException(403, "账号或密码错误");
+    }
+    if (!Boolean.TRUE.equals(user.getEnabled())) {
+      throw new BusinessException(403, "账号已被禁用");
+    }
+    if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+      loginFailureGuard.recordFailure(request.getUsername());
+      throw new BusinessException(403, "账号或密码错误");
+    }
+    validateTenantAccess(user.getId(), tenantId);
+    if (!user.getRoleId().equals(request.getRoleId())) {
+      loginFailureGuard.recordFailure(request.getUsername());
+      throw new BusinessException(403, "身份不匹配");
     }
 
     loginFailureGuard.reset(request.getUsername());
     return issueLoginSession(user, tenantId);
+  }
+
+  @Transactional
+  public LoginResponse register(RegisterRequest request) {
+    InvitationRecord invitation = authMapper.findInvitationByTokenHashForUpdate(SystemService.sha256(request.getInvitationToken()));
+    if (invitation == null) {
+      throw new BusinessException(400, "邀请无效");
+    }
+    if (invitation.getUsedAt() != null) {
+      throw new BusinessException(400, "邀请已使用");
+    }
+    LocalDateTime now = LocalDateTime.now();
+    if (invitation.getExpiresAt() == null || !invitation.getExpiresAt().isAfter(now)) {
+      throw new BusinessException(400, "邀请已过期");
+    }
+    RoleResponse role = authMapper.findRoleById(invitation.getRoleId());
+    if (role == null || (!"staff".equals(role.getCode()) && !"guest".equals(role.getCode()))) {
+      throw new BusinessException(400, "邀请身份无效");
+    }
+    if (authMapper.findUserByUsername(request.getUsername()) != null) {
+      throw new BusinessException(400, "用户名已存在");
+    }
+
+    UserRecord user = createUser(
+        request.getUsername(), request.getPassword(), request.getDisplayName(), invitation.getTenantId(), role.getId());
+    if (authMapper.consumeInvitation(invitation.getId(), now) != 1) {
+      throw new BusinessException(400, "邀请已使用或已过期");
+    }
+    return issueLoginSession(user, invitation.getTenantId());
   }
 
   public AuthTokenResponse refresh(RefreshTokenRequest request) {
@@ -112,15 +128,6 @@ public class AuthService {
     return buildTokenResponse(user, record.getTenantId(), rotatedRefreshToken);
   }
 
-  public LoginResponse switchTenant(CurrentSession session, SwitchTenantRequest request) {
-    validateTenantAccess(session.getUserId(), request.getTenantId());
-    UserRecord user = authMapper.findUserById(session.getUserId());
-    if (user == null) {
-      throw new BusinessException(401, "token 无效，无法切换租户");
-    }
-    return issueLoginSession(user, request.getTenantId());
-  }
-
   public UserProfileResponse me(CurrentSession session) {
     UserRecord user = authMapper.findUserById(session.getUserId());
     if (user == null) {
@@ -135,6 +142,7 @@ public class AuthService {
     response.setPermissions(authMapper.listPermissions(user.getId(), session.getTenantId()));
     response.setTenantId(session.getTenantId());
     response.setTenants(authMapper.listTenantsByUserId(user.getId()).stream().map(this::toTenantInfo).toList());
+    response.setPlatformAdmin(Boolean.TRUE.equals(user.getPlatformAdmin()));
     return response;
   }
 
@@ -147,7 +155,12 @@ public class AuthService {
     List<String> permissions = authMapper.listPermissions(user.getId(), session.getTenantId());
     List<String> roles = authMapper.listRolesByUserId(user.getId());
     String menuScope = roles.isEmpty() ? "guest" : resolveMenuScopeByRole(roles.get(0));
-    List<MenuRecord> menuRecords = authMapper.listMenusByScope(menuScope);
+    List<MenuRecord> menuRecords = new ArrayList<>(authMapper.listMenusByScope(menuScope).stream()
+        .filter(menu -> !StringUtils.hasText(menu.getPermissionCode()) || permissions.contains(menu.getPermissionCode()))
+        .toList());
+    if (Boolean.TRUE.equals(user.getPlatformAdmin())) {
+      menuRecords.addAll(authMapper.listMenusByScope("platform"));
+    }
     MenuDataResponse response = new MenuDataResponse();
     response.setPermissions(permissions);
     response.setMenus(buildMenuTree(menuRecords));
@@ -179,6 +192,7 @@ public class AuthService {
 
   public void updateUserRole(CurrentSession session, String userId, String roleId) {
     requireAdmin(session);
+    if (session.getUserId().equals(userId)) throw new BusinessException(400, "不能修改当前登录账号的身份");
     if (authMapper.findRoleById(roleId) == null) throw new BusinessException(400, "身份不存在");
     requireUser(userId);
     authMapper.updateUserRole(userId, roleId);
@@ -257,7 +271,11 @@ public class AuthService {
     user.setPasswordHash(passwordEncoder.encode(password));
     user.setDisplayName(displayName);
     user.setRoleId(roleId);
-    authMapper.insertUser(user);
+    try {
+      authMapper.insertUser(user);
+    } catch (DuplicateKeyException exception) {
+      throw new BusinessException(400, "用户名已存在");
+    }
     authMapper.insertUserTenant(user.getId(), tenantId);
     return user;
   }
@@ -308,15 +326,18 @@ public class AuthService {
       }
     }
 
-    roots.forEach(this::normalizeChildren);
+    roots.forEach(this::pruneEmptyGroups);
+    roots.removeIf(menu -> "RouteView".equals(menu.getComponent()) && menu.getChildren() == null);
     return roots;
   }
 
-  private void normalizeChildren(MenuItemResponse menu) {
+  private void pruneEmptyGroups(MenuItemResponse menu) {
     if (menu.getChildren() == null || menu.getChildren().isEmpty()) {
       menu.setChildren(null);
       return;
     }
-    menu.getChildren().forEach(this::normalizeChildren);
+    menu.getChildren().forEach(this::pruneEmptyGroups);
+    menu.getChildren().removeIf(child -> "RouteView".equals(child.getComponent()) && child.getChildren() == null);
+    if (menu.getChildren().isEmpty()) menu.setChildren(null);
   }
 }
