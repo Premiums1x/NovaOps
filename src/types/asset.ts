@@ -8,12 +8,14 @@ export type AssetActionType = 'receive' | 'claim' | 'scrap'
 
 export interface AssetListItemDto {
   id: string
+  assetNo: string
   name: string
   type: AssetType
   status: AssetStatus
-  owner: string
-  location: string
-  purchaseDate: string
+  ownerId?: string | null
+  ownerName?: string | null
+  location?: string | null
+  purchaseDate?: string | null
   updatedAt: string
 }
 
@@ -26,9 +28,8 @@ export interface RelatedTicketDto {
 }
 
 export interface AssetDetailDto extends AssetListItemDto {
-  tenantId: string
-  spec: string
-  remark: string
+  spec?: string | null
+  remark?: string | null
   relatedTickets: RelatedTicketDto[]
 }
 
@@ -64,6 +65,6 @@ export interface UpdateAssetDto {
 
 export interface AssetActionDto {
   action: AssetActionType
-  owner?: string
+  ownerId?: string
   remark?: string
 }

@@ -1,21 +1,15 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useAuthStore } from '@/store/auth'
-import { getRolesApi } from '@/api/auth'
-import type { LoginRequestDto, RoleDto } from '@/types/auth'
+import type { LoginRequestDto } from '@/types/auth'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const submitting = ref(false)
-const roles = ref<RoleDto[]>([])
-const formState = reactive<LoginRequestDto>({ username: '', password: '', tenantId: 'tenant-a', roleId: '' })
-
-onMounted(async () => {
-  try { roles.value = await getRolesApi() } catch { /* 角色加载失败不阻塞页面 */ }
-})
+const formState = reactive<LoginRequestDto>({ username: '', password: '' })
 
 const handleLogin = async () => {
   try {
@@ -39,7 +33,7 @@ const handleLogin = async () => {
         <h1>让企业知识与运维协作<br />真正连接起来</h1>
         <p>统一管理服务流程、企业知识和智能问答，让每一次决策都有依据可追溯。</p>
         <div class="brand-metrics">
-          <span><strong>RAG</strong>可信知识检索</span><span><strong>24×7</strong>智能服务助手</span><span><strong>Tenant</strong>企业级数据隔离</span>
+          <span><strong>RAG</strong>可信知识检索</span><span><strong>24×7</strong>智能服务助手</span><span><strong>AI</strong>智能运维助手</span>
         </div>
       </div>
     </section>
@@ -47,19 +41,12 @@ const handleLogin = async () => {
       <div class="mobile-brand">NovaOps</div>
       <a-card class="login-card" :bordered="false">
         <header class="login-heading"><span class="eyebrow">WELCOME BACK</span><h2>登录 NovaOps</h2><p>使用您的企业账号继续</p></header>
-        <a-alert type="info" show-icon message="若账号不存在，将按所选身份自动创建（管理员除外）" class="login-alert" />
         <a-form layout="vertical" :model="formState" @finish="handleLogin">
           <a-form-item label="账号" name="username" :rules="[{ required: true, message: '请输入账号' }]">
             <a-input v-model:value="formState.username" placeholder="请输入账号" />
           </a-form-item>
           <a-form-item label="密码" name="password" :rules="[{ required: true, message: '请输入密码' }]">
             <a-input-password v-model:value="formState.password" placeholder="请输入密码" />
-          </a-form-item>
-          <a-form-item label="租户" name="tenantId" :rules="[{ required: true, message: '请选择租户' }]">
-            <a-select v-model:value="formState.tenantId" :options="[{ value: 'tenant-a', label: 'Tenant A' }, { value: 'tenant-b', label: 'Tenant B' }]" />
-          </a-form-item>
-          <a-form-item label="身份" name="roleId" :rules="[{ required: true, message: '请选择身份' }]">
-            <a-select v-model:value="formState.roleId" :options="roles.map(r => ({ value: r.id, label: r.name }))" placeholder="请选择身份" />
           </a-form-item>
           <a-form-item><a-button type="primary" html-type="submit" block :loading="submitting">登录</a-button></a-form-item>
         </a-form>

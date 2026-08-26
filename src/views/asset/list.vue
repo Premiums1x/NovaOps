@@ -5,7 +5,9 @@ import { message, Modal } from 'ant-design-vue'
 import type { TableProps } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import ProTable from '@/components/pro-table/index.vue'
-import { assetActionApi, createAssetApi, getAssetListApi, updateAssetApi } from '@/api/asset'
+import { getUserOptionsApi } from '@/api/auth'
+import { assetActionApi, createAssetApi, getAssetDetailApi, getAssetListApi, updateAssetApi } from '@/api/asset'
+import type { UserOptionDto } from '@/types/auth'
 import type {
   AssetListItemDto,
   AssetListQueryDto,
@@ -30,6 +32,8 @@ const createModalOpen = ref(false)
 const editModalOpen = ref(false)
 const claimModalOpen = ref(false)
 const current = ref<AssetListItemDto | null>(null)
+const userOptionsLoading = ref(false)
+const claimUsers = ref<UserOptionDto[]>([])
 
 const filters = reactive<{
   status?: AssetStatus
@@ -58,7 +62,7 @@ const editForm = reactive<UpdateAssetDto>({
 })
 
 const claimForm = reactive({
-  owner: '',
+  ownerId: '',
   remark: '',
 })
 
@@ -82,11 +86,11 @@ const typeTextMap: Record<AssetType, string> = {
 }
 
 const columns: TableProps['columns'] = [
-  { title: '资产编号', dataIndex: 'id', key: 'id', width: 140 },
+  { title: '资产编号', dataIndex: 'assetNo', key: 'assetNo', width: 160 },
   { title: '资产名称', dataIndex: 'name', key: 'name', width: 220, ellipsis: true },
   { title: '类型', dataIndex: 'type', key: 'type', width: 120 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 120 },
-  { title: '领用人', dataIndex: 'owner', key: 'owner', width: 120 },
+  { title: '领用人', dataIndex: 'ownerName', key: 'ownerName', width: 140 },
   { title: '位置', dataIndex: 'location', key: 'location', width: 180, ellipsis: true },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 180 },
   { title: '操作', key: 'actions', fixed: 'right', width: 300 },
@@ -149,14 +153,20 @@ const submitCreate = async () => {
   }
 }
 
-const openEdit = (record: AssetListItemDto) => {
-  current.value = record
-  editForm.name = record.name
-  editForm.type = record.type
-  editForm.location = record.location
-  editForm.spec = ''
-  editForm.remark = ''
-  editModalOpen.value = true
+const openEdit = async (record: AssetListItemDto) => {
+  modalLoading.value = true
+  try {
+    const detail = await getAssetDetailApi(record.id)
+    current.value = detail
+    editForm.name = detail.name
+    editForm.type = detail.type
+    editForm.location = detail.location || ''
+    editForm.spec = detail.spec || ''
+    editForm.remark = detail.remark || ''
+    editModalOpen.value = true
+  } finally {
+    modalLoading.value = false
+  }
 }
 
 const submitEdit = async () => {
@@ -174,23 +184,35 @@ const submitEdit = async () => {
   }
 }
 
-const openClaim = (record: AssetListItemDto) => {
+const loadClaimUsers = async () => {
+  userOptionsLoading.value = true
+  try {
+    claimUsers.value = await getUserOptionsApi()
+  } finally {
+    userOptionsLoading.value = false
+  }
+}
+
+const openClaim = async (record: AssetListItemDto) => {
   current.value = record
-  claimForm.owner = record.owner === '-' ? '' : record.owner
+  claimForm.ownerId = record.ownerId || ''
   claimForm.remark = ''
   claimModalOpen.value = true
+  if (!claimUsers.value.length) {
+    await loadClaimUsers()
+  }
 }
 
 const submitClaim = async () => {
-  if (!current.value || !claimForm.owner) {
-    message.warning('请填写领用人')
+  if (!current.value || !claimForm.ownerId) {
+    message.warning('请选择领用人')
     return
   }
   modalLoading.value = true
   try {
     await assetActionApi(current.value.id, {
       action: 'claim',
-      owner: claimForm.owner,
+      ownerId: claimForm.ownerId,
       remark: claimForm.remark,
     })
     message.success('领用成功')
@@ -203,7 +225,7 @@ const submitClaim = async () => {
 
 const receiveAsset = (record: AssetListItemDto) => {
   Modal.confirm({
-    title: `确认将 ${record.id} 回收入库？`,
+    title: `确认将 ${record.assetNo} 回收入库？`,
     onOk: async () => {
       await assetActionApi(record.id, {
         action: 'receive',
@@ -216,7 +238,7 @@ const receiveAsset = (record: AssetListItemDto) => {
 
 const scrapAsset = (record: AssetListItemDto) => {
   Modal.confirm({
-    title: `确认报废 ${record.id}？`,
+    title: `确认报废 ${record.assetNo}？`,
     content: '报废后不可恢复为在用状态。',
     okButtonProps: { danger: true },
     onOk: async () => {
@@ -319,6 +341,9 @@ onMounted(() => {
             {{ statusTextMap[(record as AssetListItemDto).status] }}
           </a-tag>
         </template>
+        <template v-else-if="column.key === 'ownerName'">
+          {{ (record as AssetListItemDto).ownerName || '-' }}
+        </template>
         <template v-else-if="column.key === 'updatedAt'">
           {{ dayjs((record as AssetListItemDto).updatedAt).format('YYYY-MM-DD HH:mm') }}
         </template>
@@ -332,7 +357,7 @@ onMounted(() => {
               <a-button
                 type="link"
                 size="small"
-                :disabled="(record as AssetListItemDto).status === 'scrapped'"
+                :disabled="(record as AssetListItemDto).status !== 'stock'"
                 @click="openClaim(record as AssetListItemDto)"
               >
                 领用
@@ -342,7 +367,7 @@ onMounted(() => {
               <a-button
                 type="link"
                 size="small"
-                :disabled="(record as AssetListItemDto).status === 'scrapped'"
+                :disabled="(record as AssetListItemDto).status !== 'in_use'"
                 @click="receiveAsset(record as AssetListItemDto)"
               >
                 回收
@@ -407,7 +432,14 @@ onMounted(() => {
     <a-modal v-model:open="claimModalOpen" title="资产领用" :confirm-loading="modalLoading" @ok="submitClaim">
       <a-form layout="vertical">
         <a-form-item label="领用人" required>
-          <a-input v-model:value="claimForm.owner" placeholder="例如：Alice" />
+          <a-select
+            v-model:value="claimForm.ownerId"
+            show-search
+            option-filter-prop="label"
+            :loading="userOptionsLoading"
+            :options="claimUsers.map(user => ({ label: `${user.displayName}（${user.username}）`, value: user.id }))"
+            placeholder="请选择启用用户"
+          />
         </a-form-item>
         <a-form-item label="备注">
           <a-textarea v-model:value="claimForm.remark" :rows="2" />

@@ -7,10 +7,10 @@ import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
 import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
-import com.novaops.backend.auth.dto.SwitchTenantRequest;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
 import com.novaops.backend.auth.dto.UserListItemResponse;
+import com.novaops.backend.auth.dto.UserOptionResponse;
 import com.novaops.backend.auth.dto.UpdateUserStatusRequest;
 import com.novaops.backend.auth.dto.UpdateUserRoleRequest;
 import com.novaops.backend.auth.dto.ResetPasswordRequest;
@@ -18,6 +18,7 @@ import com.novaops.backend.auth.service.AuthService;
 import com.novaops.backend.common.api.ApiResponse;
 import com.novaops.backend.common.api.PageResult;
 import com.novaops.backend.common.security.RequestContext;
+import com.novaops.backend.common.security.RequirePermission;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -60,11 +61,6 @@ public class AuthController {
     return ApiResponse.success(authService.refresh(request), "刷新成功");
   }
 
-  @PostMapping("/switch-tenant")
-  public ApiResponse<LoginResponse> switchTenant(@Valid @RequestBody SwitchTenantRequest request) {
-    return ApiResponse.success(authService.switchTenant(RequestContext.getRequired(), request), "租户切换成功");
-  }
-
   @GetMapping("/me")
   public ApiResponse<UserProfileResponse> me() {
     return ApiResponse.success(authService.me(RequestContext.getRequired()));
@@ -83,6 +79,12 @@ public class AuthController {
   @GetMapping("/users")
   public ApiResponse<PageResult<UserListItemResponse>> users(@Valid UserListQuery query) {
     return ApiResponse.success(authService.listUsers(RequestContext.getRequired(), query));
+  }
+
+  @GetMapping("/user-options")
+  @RequirePermission("asset:claim")
+  public ApiResponse<List<UserOptionResponse>> userOptions() {
+    return ApiResponse.success(authService.listUserOptions());
   }
 
   @PutMapping("/users/{id}/status")

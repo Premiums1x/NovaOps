@@ -34,7 +34,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
     }
 
     CurrentSession session = RequestContext.getRequired();
-    if (!authMapper.listPermissions(session.getUserId(), session.getTenantId()).contains(required.value())) {
+    if (!authMapper.listPermissions(session.getUserId()).contains(required.value())) {
       throw new BusinessException(403, "无权限执行该操作");
     }
     return true;
