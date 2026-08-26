@@ -59,6 +59,8 @@ app:
   mail:
     mode: ${MAIL_MODE:log}
     from: ${MAIL_FROM:}
+    # 激活/重置链接里的前端地址前缀，log 模式下也会直接返回给前端
+    activation-base-url: ${MAIL_ACTIVATION_BASE_URL:http://localhost:5173}
   kb:
     storage-path: ${NOVAOPS_KB_STORAGE:./data/kb}
     max-file-size-bytes: ${NOVAOPS_KB_MAX_FILE_BYTES:31457280}

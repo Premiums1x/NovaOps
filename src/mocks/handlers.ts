@@ -144,8 +144,8 @@ export const handlers = [
     await delay(300)
     const payload = (await request.json()) as { username: string; email: string; password: string }
     try {
-      registerMockUser(payload.username, payload.email, payload.password)
-      return ok(null, '注册成功，请查收激活邮件')
+      const activationToken = registerMockUser(payload.username, payload.email, payload.password)
+      return ok({ activationToken }, '注册成功')
     } catch (error) {
       return fail(409, (error as Error).message)
     }

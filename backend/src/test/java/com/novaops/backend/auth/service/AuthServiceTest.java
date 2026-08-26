@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.novaops.backend.auth.dto.LoginRequest;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
 import com.novaops.backend.auth.dto.RegisterRequest;
+import com.novaops.backend.auth.dto.RegisterResponse;
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.UserOptionResponse;
 import com.novaops.backend.auth.controller.AuthController;
@@ -89,12 +90,16 @@ class AuthServiceTest {
     when(authMapper.findUserByUsername("newbie")).thenReturn(null);
     when(authMapper.findUserByEmail("newbie@example.com")).thenReturn(null);
     when(authMapper.findRoleById("role-member")).thenReturn(role("role-member", "member"));
+    // log 降级模式契约：激活 token 原样交回前端；smtp 模式该 mock 返回 null
+    when(emailSender.activationTokenFor(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
 
-    authService.register(registerRequest());
+    RegisterResponse response = authService.register(registerRequest());
 
+    assertThat(response.getActivationToken()).isNotNull();
     verify(authMapper).insertUser(any(UserRecord.class));
     verify(authMapper).insertEmailVerification(anyString(), anyString(), eq("register"), any(LocalDateTime.class));
     verify(emailSender).sendVerificationEmail(eq("newbie@example.com"), anyString());
+    verify(emailSender).activationTokenFor(anyString());
   }
 
   @Test

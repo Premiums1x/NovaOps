@@ -41,13 +41,13 @@ describe('authentication pages', () => {
     expect(wrapper.find('input[placeholder="请输入账号"]').exists()).toBe(true)
   })
 
-  it('submits the email registration contract and returns to login', async () => {
+  it('submits the email registration contract and jumps to the activation page with the returned token', async () => {
     const routes = [
       { path: '/register', component: RegisterView },
-      { path: '/dashboard', component: { template: '<div>Dashboard</div>' } },
+      { path: '/verify', component: { template: '<div>Verify</div>' } },
       { path: '/login', component: { template: '<div>Login</div>' } },
     ]
-    vi.mocked(registerApi).mockResolvedValue(undefined)
+    vi.mocked(registerApi).mockResolvedValue({ activationToken: 'tok-abc' })
     const router = await makeRouter(routes, '/register')
     const wrapper = mount(RegisterView, { global: { plugins: [antdPlugin, router] } })
     await wrapper.get('input[placeholder="请输入账号"]').setValue('new_staff')
@@ -60,6 +60,23 @@ describe('authentication pages', () => {
       email: 'staff@example.com',
       password: 'strong-password',
     })
+    expect(router.currentRoute.value.path).toBe('/verify')
+    expect(router.currentRoute.value.query.token).toBe('tok-abc')
+  })
+
+  it('returns to login with a prompt when no activation token is returned (smtp mode)', async () => {
+    const routes = [
+      { path: '/register', component: RegisterView },
+      { path: '/login', component: { template: '<div>Login</div>' } },
+    ]
+    vi.mocked(registerApi).mockResolvedValue({ activationToken: null })
+    const router = await makeRouter(routes, '/register')
+    const wrapper = mount(RegisterView, { global: { plugins: [antdPlugin, router] } })
+    await wrapper.get('input[placeholder="请输入账号"]').setValue('new_staff')
+    await wrapper.get('input[placeholder="用于接收激活邮件"]').setValue('staff@example.com')
+    await wrapper.get('input[type="password"]').setValue('strong-password')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
     expect(router.currentRoute.value.path).toBe('/login')
   })
 })

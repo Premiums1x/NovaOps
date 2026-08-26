@@ -9,4 +9,12 @@ public interface EmailSender {
   void sendVerificationEmail(String to, String token);
 
   void sendResetPasswordEmail(String to, String token);
+
+  /**
+   * 是否允许把激活凭证直接交回前端：log 本地降级模式返回原 token 供联调直接激活；
+   * 真实发信（smtp）模式返回 null，激活凭证只通过邮件下发。
+   */
+  default String activationTokenFor(String token) {
+    return null;
+  }
 }
