@@ -18,22 +18,22 @@ class JwtServiceTest {
   }
 
   @Test
-  void accessTokenCarriesTenantAndUserClaims() {
+  void accessTokenCarriesUserClaims() {
     JwtService jwtService = new JwtService(properties("unit-test-secret-0123456789abcdef0123456789"));
-    CurrentSession session = new CurrentSession("u-1", "alice", "Alice", "tenant-a");
+    CurrentSession session = new CurrentSession("u-1", "alice", "Alice");
 
     CurrentSession parsed = jwtService.parseAccessToken(jwtService.createAccessToken(session));
 
     assertThat(parsed.getUserId()).isEqualTo("u-1");
     assertThat(parsed.getUsername()).isEqualTo("alice");
-    assertThat(parsed.getTenantId()).isEqualTo("tenant-a");
+    assertThat(parsed.getDisplayName()).isEqualTo("Alice");
   }
 
   @Test
   void rejectsTokenSignedWithDifferentSecret() {
     JwtService signer = new JwtService(properties("unit-test-secret-0123456789abcdef0123456789"));
     JwtService verifier = new JwtService(properties("another-test-secret-0123456789abcdef01234"));
-    String token = signer.createAccessToken(new CurrentSession("u-1", "alice", "Alice", "tenant-a"));
+    String token = signer.createAccessToken(new CurrentSession("u-1", "alice", "Alice"));
 
     assertThatThrownBy(() -> verifier.parseAccessToken(token))
         .hasMessageContaining("token");

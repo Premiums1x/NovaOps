@@ -218,7 +218,7 @@ class AuthServiceTest {
   }
 
   private CurrentSession session() {
-    return new CurrentSession("u-staff", "staff", "Staff", "tenant-a");
+    return new CurrentSession("u-staff", "staff", "Staff");
   }
 
   private LoginRequest loginRequest(String username) {

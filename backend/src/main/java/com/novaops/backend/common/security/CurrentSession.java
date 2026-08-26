@@ -5,13 +5,11 @@ public class CurrentSession {
   private final String userId;
   private final String username;
   private final String displayName;
-  private final String tenantId;
 
-  public CurrentSession(String userId, String username, String displayName, String tenantId) {
+  public CurrentSession(String userId, String username, String displayName) {
     this.userId = userId;
     this.username = username;
     this.displayName = displayName;
-    this.tenantId = tenantId;
   }
 
   public String getUserId() {
@@ -24,9 +22,5 @@ public class CurrentSession {
 
   public String getDisplayName() {
     return displayName;
-  }
-
-  public String getTenantId() {
-    return tenantId;
   }
 }

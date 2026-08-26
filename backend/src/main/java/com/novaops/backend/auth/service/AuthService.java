@@ -37,9 +37,6 @@ import org.springframework.util.StringUtils;
 @Service
 public class AuthService {
 
-  /** 单租户化：业务表保留 tenant_id 字段但值固定，后续阶段再物理删除 */
-  private static final String DEFAULT_TENANT_ID = "tenant-a";
-
   private final AuthMapper authMapper;
   private final PasswordEncoder passwordEncoder;
   private final JwtService jwtService;
@@ -164,8 +161,6 @@ public class AuthService {
     response.setDisplayName(user.getDisplayName());
     response.setRoles(authMapper.listRolesByUserId(user.getId()));
     response.setPermissions(authMapper.listPermissions(user.getId()));
-    response.setTenantId(DEFAULT_TENANT_ID);
-    response.setTenants(List.of());
     return response;
   }
 
@@ -265,13 +260,11 @@ public class AuthService {
     response.setAccessToken(tokenResponse.getAccessToken());
     response.setRefreshToken(tokenResponse.getRefreshToken());
     response.setExpiresIn(tokenResponse.getExpiresIn());
-    response.setTenantId(DEFAULT_TENANT_ID);
     return response;
   }
 
   private AuthTokenResponse buildTokenResponse(UserRecord user, String refreshToken) {
-    // 单租户化：CurrentSession 的 tenantId 固定为默认值（业务表仍用它过滤，值为常量）
-    CurrentSession session = new CurrentSession(user.getId(), user.getUsername(), user.getDisplayName(), DEFAULT_TENANT_ID);
+    CurrentSession session = new CurrentSession(user.getId(), user.getUsername(), user.getDisplayName());
     AuthTokenResponse response = new AuthTokenResponse();
     response.setAccessToken(jwtService.createAccessToken(session));
     response.setRefreshToken(refreshToken);

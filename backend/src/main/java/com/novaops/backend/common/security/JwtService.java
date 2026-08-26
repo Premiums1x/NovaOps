@@ -35,7 +35,6 @@ public class JwtService {
         .subject(session.getUserId())
         .claim("username", session.getUsername())
         .claim("displayName", session.getDisplayName())
-        .claim("tenantId", session.getTenantId())
         .issuedAt(Date.from(now))
         .expiration(Date.from(expiresAt))
         .signWith(secretKey)
@@ -53,8 +52,7 @@ public class JwtService {
       return new CurrentSession(
           claims.getSubject(),
           claims.get("username", String.class),
-          claims.get("displayName", String.class),
-          claims.get("tenantId", String.class)
+          claims.get("displayName", String.class)
       );
     } catch (Exception exception) {
       throw new BusinessException(401, "token 无效");
