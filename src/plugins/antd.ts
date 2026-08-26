@@ -33,6 +33,7 @@ import {
   Tabs,
   Tag,
   Timeline,
+  Tooltip,
   Typography,
   Upload,
 } from 'ant-design-vue'
@@ -70,6 +71,7 @@ const components = [
   Tabs,
   Tag,
   Timeline,
+  Tooltip,
   Typography,
   Upload,
 ]
