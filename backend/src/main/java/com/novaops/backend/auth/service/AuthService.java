@@ -8,18 +8,16 @@ import com.novaops.backend.auth.dto.MenuItemResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
 import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RoleResponse;
-import com.novaops.backend.auth.dto.SwitchTenantRequest;
-import com.novaops.backend.auth.dto.TenantInfoResponse;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
 import com.novaops.backend.auth.dto.UserListItemResponse;
+import com.novaops.backend.auth.dto.UserOptionResponse;
 import com.novaops.backend.common.api.PageResult;
 import com.novaops.backend.auth.mail.EmailSender;
 import com.novaops.backend.auth.mapper.AuthMapper;
 import com.novaops.backend.auth.model.EmailVerificationRecord;
 import com.novaops.backend.auth.model.MenuRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
-import com.novaops.backend.auth.model.TenantRecord;
 import com.novaops.backend.auth.model.UserRecord;
 import com.novaops.backend.common.exception.BusinessException;
 import com.novaops.backend.common.security.CurrentSession;
@@ -37,6 +35,9 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class AuthService {
+
+  /** 单租户化：业务表保留 tenant_id 字段但值固定，后续阶段再物理删除 */
+  private static final String DEFAULT_TENANT_ID = "tenant-a";
 
   private final AuthMapper authMapper;
   private final PasswordEncoder passwordEncoder;
@@ -58,8 +59,6 @@ public class AuthService {
 
     UserRecord user = authMapper.findUserByUsername(request.getUsername());
 
-    String tenantId = StringUtils.hasText(request.getTenantId()) ? request.getTenantId() : "tenant-a";
-
     if (user == null) {
       // 用户不存在 → 不再自助注册，统一返回模糊错误避免账号枚举
       loginFailureGuard.recordFailure(request.getUsername());
@@ -73,14 +72,9 @@ public class AuthService {
       loginFailureGuard.recordFailure(request.getUsername());
       throw new BusinessException(403, "账号或密码错误");
     }
-    validateTenantAccess(user.getId(), tenantId);
-    if (!user.getRoleId().equals(request.getRoleId())) {
-      loginFailureGuard.recordFailure(request.getUsername());
-      throw new BusinessException(403, "身份不匹配");
-    }
 
     loginFailureGuard.reset(request.getUsername());
-    return issueLoginSession(user, tenantId);
+    return issueLoginSession(user);
   }
 
   /** 显式注册：创建未激活账号（enabled=0），生成验证 token 并发送激活邮件。 */
@@ -109,8 +103,6 @@ public class AuthService {
     user.setDisplayName(username);
     user.setRoleId(memberRole.getId());
     authMapper.insertUser(user);
-    // 过渡期：单租户方向，注册用户默认绑定 tenant-a（去租户阶段统一移除）
-    authMapper.insertUserTenant(user.getId(), "tenant-a");
 
     String token = IdGenerator.randomId("ev");
     authMapper.insertEmailVerification(token, user.getId(), "register", LocalDateTime.now().plusHours(24));
@@ -148,24 +140,13 @@ public class AuthService {
     if (user == null || !Boolean.TRUE.equals(user.getEnabled())) {
       throw new BusinessException(401, "refresh token 已失效");
     }
-    // 租户归属被移除后不能再凭旧 token 续期
-    validateTenantAccess(user.getId(), record.getTenantId());
 
     // 轮换：旧的 refresh token 立即作废，签发新 token，降低泄露后的重放窗口
     authMapper.revokeRefreshToken(record.getToken());
     String rotatedRefreshToken = IdGenerator.randomId("rt");
     LocalDateTime expiresAt = LocalDateTime.now().plusDays(jwtService.getRefreshTokenExpireDays());
-    authMapper.insertRefreshToken(rotatedRefreshToken, user.getId(), record.getTenantId(), expiresAt);
-    return buildTokenResponse(user, record.getTenantId(), rotatedRefreshToken);
-  }
-
-  public LoginResponse switchTenant(CurrentSession session, SwitchTenantRequest request) {
-    validateTenantAccess(session.getUserId(), request.getTenantId());
-    UserRecord user = authMapper.findUserById(session.getUserId());
-    if (user == null) {
-      throw new BusinessException(401, "token 无效，无法切换租户");
-    }
-    return issueLoginSession(user, request.getTenantId());
+    authMapper.insertRefreshToken(rotatedRefreshToken, user.getId(), expiresAt);
+    return buildTokenResponse(user, rotatedRefreshToken);
   }
 
   public UserProfileResponse me(CurrentSession session) {
@@ -179,9 +160,9 @@ public class AuthService {
     response.setUsername(user.getUsername());
     response.setDisplayName(user.getDisplayName());
     response.setRoles(authMapper.listRolesByUserId(user.getId()));
-    response.setPermissions(authMapper.listPermissions(user.getId(), session.getTenantId()));
-    response.setTenantId(session.getTenantId());
-    response.setTenants(authMapper.listTenantsByUserId(user.getId()).stream().map(this::toTenantInfo).toList());
+    response.setPermissions(authMapper.listPermissions(user.getId()));
+    response.setTenantId(DEFAULT_TENANT_ID);
+    response.setTenants(List.of());
     return response;
   }
 
@@ -191,7 +172,7 @@ public class AuthService {
       throw new BusinessException(401, "token 无效");
     }
 
-    List<String> permissions = authMapper.listPermissions(user.getId(), session.getTenantId());
+    List<String> permissions = authMapper.listPermissions(user.getId());
     List<String> roles = authMapper.listRolesByUserId(user.getId());
     String menuScope = roles.isEmpty() ? "guest" : resolveMenuScopeByRole(roles.get(0));
     List<MenuRecord> menuRecords = authMapper.listMenusByScope(menuScope);
@@ -207,12 +188,15 @@ public class AuthService {
     return roles;
   }
 
+  public List<UserOptionResponse> listUserOptions() {
+    return authMapper.listEnabledUserOptions();
+  }
+
   public PageResult<UserListItemResponse> listUsers(CurrentSession session, UserListQuery query) {
     requireAdmin(session);
     int offset = (query.getPage() - 1) * query.getPageSize();
-    // 只列出与当前管理员共享租户的用户，避免跨租户越权管理
-    List<UserListItemResponse> list = authMapper.listUsers(session.getTenantId(), query.getKeyword(), query.getRoleId(), query.getEnabled(), offset, query.getPageSize());
-    long total = authMapper.countUsers(session.getTenantId(), query.getKeyword(), query.getRoleId(), query.getEnabled());
+    List<UserListItemResponse> list = authMapper.listUsers(query.getKeyword(), query.getRoleId(), query.getEnabled(), offset, query.getPageSize());
+    long total = authMapper.countUsers(query.getKeyword(), query.getRoleId(), query.getEnabled());
     return new PageResult<>(list, query.getPage(), query.getPageSize(), total);
   }
 
@@ -261,40 +245,35 @@ public class AuthService {
     requireAdmin(session);
   }
 
-  /** 校验当前会话在当前租户下是否持有权限码，供无法用注解表达的场景（如工单按动作细分） */
+  /** 校验当前会话是否持有权限码，供无法用注解表达的场景（如工单按动作细分） */
   public void requirePermission(CurrentSession session, String code) {
-    if (!authMapper.listPermissions(session.getUserId(), session.getTenantId()).contains(code)) {
+    if (!authMapper.listPermissions(session.getUserId()).contains(code)) {
       throw new BusinessException(403, "无权限执行该操作");
     }
   }
 
-  private LoginResponse issueLoginSession(UserRecord user, String tenantId) {
+  private LoginResponse issueLoginSession(UserRecord user) {
     String refreshToken = IdGenerator.randomId("rt");
     LocalDateTime expiresAt = LocalDateTime.now().plusDays(jwtService.getRefreshTokenExpireDays());
-    authMapper.insertRefreshToken(refreshToken, user.getId(), tenantId, expiresAt);
+    authMapper.insertRefreshToken(refreshToken, user.getId(), expiresAt);
 
-    AuthTokenResponse tokenResponse = buildTokenResponse(user, tenantId, refreshToken);
+    AuthTokenResponse tokenResponse = buildTokenResponse(user, refreshToken);
     LoginResponse response = new LoginResponse();
     response.setAccessToken(tokenResponse.getAccessToken());
     response.setRefreshToken(tokenResponse.getRefreshToken());
     response.setExpiresIn(tokenResponse.getExpiresIn());
-    response.setTenantId(tenantId);
+    response.setTenantId(DEFAULT_TENANT_ID);
     return response;
   }
 
-  private AuthTokenResponse buildTokenResponse(UserRecord user, String tenantId, String refreshToken) {
-    CurrentSession session = new CurrentSession(user.getId(), user.getUsername(), user.getDisplayName(), tenantId);
+  private AuthTokenResponse buildTokenResponse(UserRecord user, String refreshToken) {
+    // 单租户化：CurrentSession 的 tenantId 固定为默认值（业务表仍用它过滤，值为常量）
+    CurrentSession session = new CurrentSession(user.getId(), user.getUsername(), user.getDisplayName(), DEFAULT_TENANT_ID);
     AuthTokenResponse response = new AuthTokenResponse();
     response.setAccessToken(jwtService.createAccessToken(session));
     response.setRefreshToken(refreshToken);
     response.setExpiresIn(jwtService.getAccessTokenExpireSeconds());
     return response;
-  }
-
-  private void validateTenantAccess(String userId, String tenantId) {
-    if (authMapper.countUserTenant(userId, tenantId) <= 0) {
-      throw new BusinessException(403, "租户无权限访问");
-    }
   }
 
   private String resolveMenuScopeByRole(String roleCode) {
@@ -305,13 +284,6 @@ public class AuthService {
       return "staff";
     }
     return "full";
-  }
-
-  private TenantInfoResponse toTenantInfo(TenantRecord record) {
-    TenantInfoResponse response = new TenantInfoResponse();
-    response.setId(record.getId());
-    response.setName(record.getName());
-    return response;
   }
 
   private List<MenuItemResponse> buildMenuTree(List<MenuRecord> menuRecords) {

@@ -11,10 +11,12 @@ import type {
   CreateAssetDto,
   UpdateAssetDto,
 } from '@/types/asset'
+import { listMockUsers } from './db'
 
 type TenantId = 'tenant-a' | 'tenant-b'
 
 interface InternalAsset extends Omit<AssetDetailDto, 'relatedTickets'> {
+  tenantId: string
   history: string[]
 }
 
@@ -27,6 +29,10 @@ const assets: InternalAsset[] = []
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
+const enabledUsers = () => listMockUsers().filter((user) => user.enabled)
+const findEnabledUser = (userId: string) =>
+  enabledUsers().find((user) => user.id === userId) || null
+
 const ensureSeed = () => {
   if (assets.length) {
     return
@@ -37,14 +43,17 @@ const ensureSeed = () => {
       const type = assetTypes[i % assetTypes.length] || 'server'
       const status = assetStatuses[i % assetStatuses.length] || 'stock'
       const createdAt = dayjs().subtract(i % 60, 'day')
-      const id = `ASSET-${i}`
+      const ownerCandidates = enabledUsers()
+      const owner = status === 'in_use' ? ownerCandidates[i % ownerCandidates.length] || null : null
       assets.push({
-        id,
+        id: `ASSET-${i}`,
         tenantId,
+        assetNo: `ASSET-${tenantId === 'tenant-a' ? 'A' : 'B'}-${String(i).padStart(4, '0')}`,
         name: `${tenantId === 'tenant-a' ? 'A' : 'B'}-${type.toUpperCase()}-${String(index).padStart(3, '0')}`,
         type,
         status,
-        owner: status === 'in_use' ? ['Tom', 'Jerry', 'Alice'][i % 3] || 'Tom' : '-',
+        ownerId: owner?.id || null,
+        ownerName: owner?.displayName || null,
         location: locations[i % locations.length] || '上海机房-A区',
         purchaseDate: createdAt.subtract(120, 'day').format('YYYY-MM-DD'),
         updatedAt: createdAt.toISOString(),
@@ -62,10 +71,12 @@ ensureSeed()
 const toListItem = (asset: InternalAsset): AssetListItemDto => {
   return {
     id: asset.id,
+    assetNo: asset.assetNo,
     name: asset.name,
     type: asset.type,
     status: asset.status,
-    owner: asset.owner,
+    ownerId: asset.ownerId,
+    ownerName: asset.ownerName,
     location: asset.location,
     purchaseDate: asset.purchaseDate,
     updatedAt: asset.updatedAt,
@@ -75,11 +86,12 @@ const toListItem = (asset: InternalAsset): AssetListItemDto => {
 const toDetailBase = (asset: InternalAsset): Omit<AssetDetailDto, 'relatedTickets'> => {
   return {
     id: asset.id,
-    tenantId: asset.tenantId,
+    assetNo: asset.assetNo,
     name: asset.name,
     type: asset.type,
     status: asset.status,
-    owner: asset.owner,
+    ownerId: asset.ownerId,
+    ownerName: asset.ownerName,
     location: asset.location,
     purchaseDate: asset.purchaseDate,
     updatedAt: asset.updatedAt,
@@ -112,9 +124,10 @@ export const queryAssetsByTenant = (
     filtered = filtered.filter((item) => {
       return (
         item.id.toLowerCase().includes(keyword) ||
+        item.assetNo.toLowerCase().includes(keyword) ||
         item.name.toLowerCase().includes(keyword) ||
-        item.location.toLowerCase().includes(keyword) ||
-        item.owner.toLowerCase().includes(keyword)
+        (item.location || '').toLowerCase().includes(keyword) ||
+        (item.ownerName || '').toLowerCase().includes(keyword)
       )
     })
   }
@@ -151,15 +164,18 @@ export const getAssetsByIdsByTenant = (tenantId: string, ids: string[]): AssetSi
 }
 
 export const createAssetByTenant = (tenantId: string, payload: CreateAssetDto) => {
-  const id = `ASSET-${assets.length + 1000}`
+  const id = `mock-asset-${assets.length + 1000}`
+  const assetNo = `ASSET-MOCK-${String(assets.length + 1000).padStart(4, '0')}`
   const now = dayjs().toISOString()
   const asset: InternalAsset = {
     id,
     tenantId,
+    assetNo,
     name: payload.name,
     type: payload.type,
     status: 'stock',
-    owner: '-',
+    ownerId: null,
+    ownerName: null,
     location: payload.location,
     purchaseDate: dayjs().format('YYYY-MM-DD'),
     updatedAt: now,
@@ -213,19 +229,30 @@ export const actionAssetByTenant = (tenantId: string, id: string, username: stri
   switch (payload.action) {
     case 'receive':
       asset.status = 'stock'
-      asset.owner = '-'
+      asset.ownerId = null
+      asset.ownerName = null
       asset.history.unshift(`${dayjs().format('YYYY-MM-DD HH:mm:ss')} 回收入库 by ${username}`)
       break
-    case 'claim':
+    case 'claim': {
+      if (!payload.ownerId) {
+        throw new Error('领用需指定领用人')
+      }
+      const owner = findEnabledUser(payload.ownerId)
+      if (!owner) {
+        throw new Error('领用人不存在或已禁用')
+      }
       asset.status = 'in_use'
-      asset.owner = payload.owner || username
+      asset.ownerId = owner.id
+      asset.ownerName = owner.displayName
       asset.history.unshift(
-        `${dayjs().format('YYYY-MM-DD HH:mm:ss')} 领用 by ${asset.owner}${payload.remark ? ` / ${payload.remark}` : ''}`
+        `${dayjs().format('YYYY-MM-DD HH:mm:ss')} 领用 by ${asset.ownerName}${payload.remark ? ` / ${payload.remark}` : ''}`
       )
       break
+    }
     case 'scrap':
       asset.status = 'scrapped'
-      asset.owner = '-'
+      asset.ownerId = null
+      asset.ownerName = null
       asset.history.unshift(`${dayjs().format('YYYY-MM-DD HH:mm:ss')} 报废 by ${username}`)
       break
     default:

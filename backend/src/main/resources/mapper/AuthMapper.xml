@@ -74,11 +74,6 @@
     values (#{id}, #{username}, #{email}, #{passwordHash}, #{displayName}, #{roleId}, 0, 0, 0, now())
   </insert>
 
-  <insert id="insertUserTenant">
-    insert into sys_user_tenant (user_id, tenant_id)
-    values (#{userId}, #{tenantId})
-  </insert>
-
   <select id="listRoles" resultType="com.novaops.backend.auth.dto.RoleResponse">
     select id, code, name, description
     from sys_role
@@ -103,7 +98,6 @@
     select u.id, u.username, u.display_name, u.role_id, r.code role_code, r.name role_name, u.enabled, u.created_at
     from sys_user u inner join sys_role r on r.id = u.role_id
     where u.deleted = 0
-      and exists (select 1 from sys_user_tenant ut where ut.user_id = u.id and ut.tenant_id = #{tenantId})
     <if test="keyword != null and keyword != ''">and (u.username like concat('%', #{keyword}, '%') or u.display_name like concat('%', #{keyword}, '%'))</if>
     <if test="roleId != null and roleId != ''">and u.role_id = #{roleId}</if>
     <if test="enabled != null">and u.enabled = #{enabled}</if>
@@ -113,10 +107,17 @@
 
   <select id="countUsers" resultType="long">
     select count(1) from sys_user u where u.deleted = 0
-      and exists (select 1 from sys_user_tenant ut where ut.user_id = u.id and ut.tenant_id = #{tenantId})
     <if test="keyword != null and keyword != ''">and (u.username like concat('%', #{keyword}, '%') or u.display_name like concat('%', #{keyword}, '%'))</if>
     <if test="roleId != null and roleId != ''">and u.role_id = #{roleId}</if>
     <if test="enabled != null">and u.enabled = #{enabled}</if>
+  </select>
+
+  <select id="listEnabledUserOptions" resultType="com.novaops.backend.auth.dto.UserOptionResponse">
+    select id, username, display_name
+    from sys_user
+    where enabled = 1
+      and deleted = 0
+    order by display_name asc, username asc, id asc
   </select>
 
   <update id="updateUserStatus">update sys_user set enabled = #{enabled} where id = #{userId} and deleted = 0</update>

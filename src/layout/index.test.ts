@@ -87,16 +87,12 @@ describe('layout agent entry', () => {
   it('keeps the tenant switch control supported by the backend', async () => {
     const { wrapper } = await mountLayout([])
     const authStore = useAuthStore()
-    authStore.tenantId = 'tenant-a'
     authStore.user!.tenants = [
       { id: 'tenant-a', name: 'Tenant A' },
       { id: 'tenant-b', name: 'Tenant B' },
     ]
     await wrapper.vm.$nextTick()
-
-    const tenantSelect = wrapper.get('select')
-    expect((tenantSelect.element as HTMLSelectElement).value).toBe('tenant-a')
-    expect(tenantSelect.text()).toContain('Tenant A')
-    expect(tenantSelect.text()).toContain('Tenant B')
+    // 单租户化后布局不再渲染租户选择器
+    expect(wrapper.find('select').exists()).toBe(false)
   })
 })

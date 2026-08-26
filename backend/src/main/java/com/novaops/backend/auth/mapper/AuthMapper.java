@@ -2,6 +2,7 @@ package com.novaops.backend.auth.mapper;
 
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.UserListItemResponse;
+import com.novaops.backend.auth.dto.UserOptionResponse;
 import com.novaops.backend.auth.model.EmailVerificationRecord;
 import com.novaops.backend.auth.model.MenuRecord;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
@@ -51,6 +52,8 @@ public interface AuthMapper {
       @Param("roleId") String roleId,
       @Param("enabled") Boolean enabled
   );
+
+  List<UserOptionResponse> listEnabledUserOptions();
 
   void updateUserStatus(@Param("userId") String userId, @Param("enabled") Boolean enabled);
   void updateUserRole(@Param("userId") String userId, @Param("roleId") String roleId);

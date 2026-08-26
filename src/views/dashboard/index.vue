@@ -75,8 +75,19 @@ const chartColors = () => ({ text: getComputedStyle(document.documentElement).ge
 const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
   textStyle: { color: chartColors().text },
   tooltip: { trigger: 'axis' },
-  legend: { data: ['新增工单', '完成工单'], textStyle: { color: chartColors().text } },
-  grid: { left: 46, right: 20, top: 42, bottom: 30 },
+  legend: {
+    top: 0,
+    right: 20,
+    data: ['新增工单', '完成工单'],
+    textStyle: { color: chartColors().text },
+  },
+  grid: {
+    left: 20,
+    right: 20,
+    top: 40,
+    bottom: 20,
+    containLabel: true,
+  },
   xAxis: {
     type: 'category',
     data: data.trend.dates,
@@ -221,13 +232,6 @@ const fetchMetrics = async () => {
 }
 
 watch(
-  () => authStore.tenantId,
-  () => {
-    void fetchMetrics()
-  }
-)
-
-watch(
   rangeValue,
   () => {
     void fetchMetrics()
@@ -268,7 +272,7 @@ onBeforeUnmount(() => {
         <div>
           <a-typography-title :level="3">{{ greeting }}</a-typography-title>
           <a-typography-paragraph class="sub-text">
-            当前租户：{{ authStore.user?.tenants.find((item) => item.id === authStore.tenantId)?.name || '-' }}
+            {{ greeting }} · NovaOps 运维协作平台
           </a-typography-paragraph>
         </div>
         <a-space>
