@@ -36,6 +36,7 @@ const stubs = {
   'a-dropdown': dropdown,
   'a-select': select,
   ThemeSettings: defineComponent({ template: '<button class="theme-settings">theme</button>' }),
+  ChatFloatWidget: defineComponent({ template: '<div class="chat-float-widget-stub" />' }),
   RouterView: defineComponent({ template: '<div />' }),
 }
 

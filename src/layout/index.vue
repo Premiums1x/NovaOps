@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type MenuProps, type TabsProps } from 'ant-design-vue'
 import {
@@ -19,6 +19,8 @@ import { usePermissionStore } from '@/store/permission'
 import request from '@/utils/request'
 import type { MenuItemDto } from '@/types/menu'
 import ThemeSettings from '@/components/theme/ThemeSettings.vue'
+
+const ChatFloatWidget = defineAsyncComponent(() => import('@/components/chat/ChatFloatWidget.vue'))
 
 type MenuItem = Required<MenuProps>['items'][number]
 
@@ -200,11 +202,17 @@ const openAgentChat = () => {
           <a-breadcrumb :items="breadcrumbItems" />
         </div>
         <div class="header-right">
-          <a-space>
+          <a-space size="middle">
             <ThemeSettings />
-            <a-tooltip v-if="permissionStore.hasPermission('agent:chat')" title="智能问答">
-              <a-button type="text" aria-label="智能问答" @click="openAgentChat">
-                <CustomerServiceOutlined />
+            <a-tooltip v-if="permissionStore.hasPermission('agent:chat')" title="进入全屏智能问答">
+              <a-button
+                class="header-agent-btn"
+                aria-label="智能问答"
+                @click="openAgentChat"
+              >
+                <CustomerServiceOutlined class="agent-icon" />
+                <span class="agent-btn-text">AI 助手</span>
+                <span class="agent-pulse"></span>
               </a-button>
             </a-tooltip>
             <a-dropdown>
@@ -247,6 +255,9 @@ const openAgentChat = () => {
         </section>
       </a-layout-content>
     </a-layout>
+
+    <!-- 全局右下角客服悬浮助手 -->
+    <ChatFloatWidget />
   </a-layout>
 </template>
 
@@ -286,6 +297,61 @@ const openAgentChat = () => {
 
 .fold-btn {
   width: 40px;
+}
+
+/* 显眼高质感的 Header AI 问答按钮 */
+.header-agent-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--nova-primary) 35%, var(--nova-border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--nova-primary) 12%, var(--nova-surface)), color-mix(in srgb, var(--nova-primary) 4%, var(--nova-surface)));
+  color: var(--nova-primary);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--nova-primary) 14%, transparent);
+  transition: all 0.25s ease;
+}
+
+.header-agent-btn:hover {
+  border-color: var(--nova-primary);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--nova-primary) 20%, var(--nova-surface)), color-mix(in srgb, var(--nova-primary) 8%, var(--nova-surface)));
+  color: var(--nova-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--nova-primary) 28%, transparent);
+}
+
+.agent-icon {
+  font-size: 14px;
+}
+
+.agent-btn-text {
+  letter-spacing: 0.02em;
+}
+
+.agent-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+  animation: pulse-glow 2s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  }
 }
 
 .user-link {
