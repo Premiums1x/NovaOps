@@ -4,6 +4,7 @@ import type {
   CreateCommentDto,
   CreateTicketDto,
   TicketActionDto,
+  TicketActionType,
   TicketAttachmentDto,
   TicketCommentDto,
   TicketDetailDto,
