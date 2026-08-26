@@ -177,10 +177,16 @@ const createBarOption = (data: DashboardMetricsDto): ECOption => ({
   ],
 })
 
+const safeResize = (chart?: ECharts, el?: HTMLElement) => {
+  if (chart && el && el.offsetWidth > 0 && el.offsetHeight > 0) {
+    chart.resize()
+  }
+}
+
 const resizeAllCharts = () => {
-  trendChart.value?.resize()
-  pieChart.value?.resize()
-  barChart.value?.resize()
+  safeResize(trendChart.value, trendRef.value)
+  safeResize(pieChart.value, pieRef.value)
+  safeResize(barChart.value, barRef.value)
 }
 
 const renderCharts = () => {
@@ -190,7 +196,7 @@ const renderCharts = () => {
   trendChart.value?.setOption(createTrendOption(metrics.value), true)
   pieChart.value?.setOption(createPieOption(metrics.value), true)
   barChart.value?.setOption(createBarOption(metrics.value), true)
-  resizeAllCharts()
+  nextTick(resizeAllCharts)
 }
 
 const initCharts = async () => {
@@ -205,7 +211,12 @@ const initCharts = async () => {
     barChart.value = init(barRef.value)
   }
   if (!chartResizeObserver) {
-    chartResizeObserver = new ResizeObserver(resizeAllCharts)
+    chartResizeObserver = new ResizeObserver((entries) => {
+      const hasVisibleEntry = entries.some((entry) => entry.contentRect.width > 0 && entry.contentRect.height > 0)
+      if (hasVisibleEntry) {
+        resizeAllCharts()
+      }
+    })
     ;[trendRef.value, pieRef.value, barRef.value].forEach((element) => {
       if (element) chartResizeObserver?.observe(element)
     })
@@ -247,7 +258,12 @@ onMounted(() => {
 })
 
 onActivated(() => {
-  void initCharts()
+  void nextTick(() => {
+    resizeAllCharts()
+    // 防御性延时：确保 keep-alive 激活和过渡动画结束后准确获取实际容器宽度
+    setTimeout(resizeAllCharts, 60)
+    setTimeout(resizeAllCharts, 250)
+  })
 })
 
 onBeforeUnmount(() => {
@@ -370,6 +386,8 @@ onBeforeUnmount(() => {
 
 .chart-box {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .chart-line {
