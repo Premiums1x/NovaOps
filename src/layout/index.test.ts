@@ -53,7 +53,7 @@ const mountLayout = async (permissions: string[]) => {
   await router.push('/dashboard')
   await router.isReady()
   const authStore = useAuthStore(pinia)
-  authStore.user = { id: 'u-1', username: 'nova', displayName: 'Nova', roles: [], permissions: [], tenantId: 't-1', tenants: [] }
+  authStore.user = { id: 'u-1', username: 'nova', displayName: 'Nova', roles: [], permissions: [] }
   const permissionStore = usePermissionStore(pinia)
   permissionStore.codes = permissions
   return { router, wrapper: mount(Layout, { global: { plugins: [pinia, router], stubs } }) }
@@ -85,13 +85,8 @@ describe('layout agent entry', () => {
     expect(wrapper.find('.ant-float-btn').exists()).toBe(false)
   })
 
-  it('keeps the tenant switch control supported by the backend', async () => {
+  it('renders no tenant switch control (single-tenant)', async () => {
     const { wrapper } = await mountLayout([])
-    const authStore = useAuthStore()
-    authStore.user!.tenants = [
-      { id: 'tenant-a', name: 'Tenant A' },
-      { id: 'tenant-b', name: 'Tenant B' },
-    ]
     await wrapper.vm.$nextTick()
     // 单租户化后布局不再渲染租户选择器
     expect(wrapper.find('select').exists()).toBe(false)

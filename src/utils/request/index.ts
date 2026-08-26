@@ -76,58 +76,17 @@ const clearControllerByConfig = (config: RequestConfig) => {
   }
 }
 
-//解析 JWT token，从中提取信息
-// JWT token 的格式是 header.payload.signature，三段用 . 分隔。
-// 这个函数解析的是中间那段 payload，里面存着用户信息。
-const parseJwtClaims = (token: string) => {
-  const parts = token.split('.')
-  if (parts.length !== 3) {
-    return null
-  }
-
-  try {
-    const payload = parts[1] || ''
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
-    //JWT 用的是 Base64URL 编码，用 - 和 _ 代替了 + 和 /，需要换回来，再补齐 = 号
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    return JSON.parse(window.atob(padded)) as {
-      //atob 解码 + JSON.parse 解析
-      //  Base64 字符串还原成 JSON 对象
-      username?: string
-      tenantId?: string
-    }
-  } catch {
-    return null
-  }
-}
-
 const setAuthorizationHeader = (config: RequestConfig, accessToken: string) => {
   //axios 内部有时把 headers 处理成 AxiosHeaders 类实例，有时还是原始对象，两种设置值的方式不同。
   if (config.headers instanceof AxiosHeaders) {
     config.headers.set('Authorization', `Bearer ${accessToken}`)
-
-    // accesstoken传进去拿到解析后的JWT信息
-    const claims = parseJwtClaims(accessToken)
-    //给请求头加参数
-
-    //可选链（optional chaining），?.
-    if (claims?.tenantId) {
-      config.headers.set('X-NovaOps-Tenant-Id', claims.tenantId)
-    }
-    if (claims?.username) {
-      config.headers.set('X-NovaOps-Username', claims.username)
-    }
     return
   }
 
   // 处理 headers 是普通对象的情况，用扩展运算符 ... 合并进去
-  const claims = parseJwtClaims(accessToken)
   config.headers = {
     ...config.headers,
     Authorization: `Bearer ${accessToken}`,
-    //条件性地往对象里加属性。
-    ...(claims?.tenantId ? { 'X-NovaOps-Tenant-Id': claims.tenantId } : {}),
-    ...(claims?.username ? { 'X-NovaOps-Username': claims.username } : {}),
   }
 }
 
