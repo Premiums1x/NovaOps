@@ -12,7 +12,6 @@ import org.apache.ibatis.annotations.Param;
 public interface TicketMapper {
 
   long countTickets(
-      @Param("tenantId") String tenantId,
       @Param("status") String status,
       @Param("priority") String priority,
       @Param("keyword") String keyword,
@@ -21,7 +20,6 @@ public interface TicketMapper {
   );
 
   List<TicketRecord> queryTickets(
-      @Param("tenantId") String tenantId,
       @Param("status") String status,
       @Param("priority") String priority,
       @Param("keyword") String keyword,
@@ -31,9 +29,7 @@ public interface TicketMapper {
       @Param("limit") long limit
   );
 
-  long countTicketsByTenant(@Param("tenantId") String tenantId);
-
-  TicketRecord findTicket(@Param("tenantId") String tenantId, @Param("ticketId") String ticketId);
+  TicketRecord findTicket(@Param("ticketId") String ticketId);
 
   void insertTicket(TicketRecord record);
 

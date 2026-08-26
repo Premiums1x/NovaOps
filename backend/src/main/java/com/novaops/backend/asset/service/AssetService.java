@@ -39,15 +39,15 @@ public class AssetService {
     long pageSize = query.getPageSize() == null || query.getPageSize() < 1 ? 10 : query.getPageSize();
     long offset = (page - 1) * pageSize;
 
-    long total = assetMapper.countAssets(session.getTenantId(), query.getStatus(), query.getType(), query.getKeyword());
+    long total = assetMapper.countAssets(query.getStatus(), query.getType(), query.getKeyword());
     List<AssetRecord> records = assetMapper.queryAssets(
-        session.getTenantId(), query.getStatus(), query.getType(), query.getKeyword(), offset, pageSize);
+        query.getStatus(), query.getType(), query.getKeyword(), offset, pageSize);
     List<AssetListItemResponse> list = records.stream().map(this::toListItem).toList();
     return new PageResult<>(list, page, pageSize, total);
   }
 
   public AssetDetailResponse detail(CurrentSession session, String id) {
-    AssetRecord record = requireAsset(session.getTenantId(), id);
+    AssetRecord record = requireAsset(id);
     return buildDetail(record);
   }
 
@@ -55,7 +55,7 @@ public class AssetService {
     if (ids == null || ids.isEmpty()) {
       return List.of();
     }
-    return assetMapper.findByIds(session.getTenantId(), ids).stream()
+    return assetMapper.findByIds(ids).stream()
         .map(a -> new AssetSimpleResponse(a.getId(), a.getName(), a.getStatus()))
         .toList();
   }
@@ -65,8 +65,7 @@ public class AssetService {
     LocalDateTime now = LocalDateTime.now();
     AssetRecord record = new AssetRecord();
     record.setId(IdGenerator.randomId("asset"));
-    record.setTenantId(session.getTenantId());
-    record.setAssetNo(IdGenerator.assetNo(session.getTenantId()));
+    record.setAssetNo(IdGenerator.assetNo());
     record.setName(request.getName());
     record.setType(request.getType());
     record.setStatus("stock");
@@ -79,13 +78,13 @@ public class AssetService {
     record.setCreatedAt(now);
     record.setUpdatedAt(now);
     assetMapper.insertAsset(record);
-    insertLog(record.getId(), session.getTenantId(), "receive", session.getUserId(), null, "入库登记");
+    insertLog(record.getId(), "receive", session.getUserId(), null, "入库登记");
     return buildDetail(record);
   }
 
   @Transactional
   public AssetDetailResponse update(CurrentSession session, String id, UpdateAssetRequest request) {
-    AssetRecord record = requireAsset(session.getTenantId(), id);
+    AssetRecord record = requireAsset(id);
 
     if (StringUtils.hasText(request.getName())) {
       record.setName(request.getName());
@@ -107,8 +106,8 @@ public class AssetService {
     if (assetMapper.updateAsset(record) == 0) {
       throw new BusinessException(409, "资产已被他人修改，请刷新后重试");
     }
-    insertLog(record.getId(), session.getTenantId(), "update", session.getUserId(), null, "更新资产信息");
-    return buildDetail(requireAsset(session.getTenantId(), id));
+    insertLog(record.getId(), "update", session.getUserId(), null, "更新资产信息");
+    return buildDetail(requireAsset(id));
   }
 
   @Transactional
@@ -121,7 +120,7 @@ public class AssetService {
     };
     authService.requirePermission(session, requiredPermission);
 
-    AssetRecord record = requireAsset(session.getTenantId(), id);
+    AssetRecord record = requireAsset(id);
     validateTransition(action, record.getStatus());
 
     switch (action) {
@@ -149,8 +148,8 @@ public class AssetService {
     if (assetMapper.updateAsset(record) == 0) {
       throw new BusinessException(409, "资产已被他人修改，请刷新后重试");
     }
-    insertLog(record.getId(), session.getTenantId(), action, session.getUserId(), record.getOwnerId(), request.getRemark());
-    return buildDetail(requireAsset(session.getTenantId(), id));
+    insertLog(record.getId(), action, session.getUserId(), record.getOwnerId(), request.getRemark());
+    return buildDetail(requireAsset(id));
   }
 
   /** 资产状态机转移矩阵：stock → in_use(claim) → stock(receive)，stock/in_use → scrapped(终态)。 */
@@ -178,8 +177,8 @@ public class AssetService {
     }
   }
 
-  private AssetRecord requireAsset(String tenantId, String id) {
-    AssetRecord record = assetMapper.findAsset(tenantId, id);
+  private AssetRecord requireAsset(String id) {
+    AssetRecord record = assetMapper.findAsset(id);
     if (record == null) {
       throw new BusinessException(404, "资产不存在");
     }
@@ -201,7 +200,7 @@ public class AssetService {
     response.setPurchaseDate(record.getPurchaseDate() == null ? null : record.getPurchaseDate().toString());
     response.setCreatedAt(DateTimeUtils.toIsoString(record.getCreatedAt()));
     response.setUpdatedAt(DateTimeUtils.toIsoString(record.getUpdatedAt()));
-    response.setRelatedTickets(assetMapper.listRelatedTickets(record.getTenantId(), record.getId()));
+    response.setRelatedTickets(assetMapper.listRelatedTickets(record.getId()));
     return response;
   }
 
@@ -220,11 +219,10 @@ public class AssetService {
     return response;
   }
 
-  private void insertLog(String assetId, String tenantId, String action, String operatorId, String targetUserId, String remark) {
+  private void insertLog(String assetId, String action, String operatorId, String targetUserId, String remark) {
     AssetLogRecord log = new AssetLogRecord();
     log.setId(IdGenerator.randomId("aslog"));
     log.setAssetId(assetId);
-    log.setTenantId(tenantId);
     log.setAction(action);
     log.setOperatorId(operatorId);
     log.setTargetUserId(targetUserId);

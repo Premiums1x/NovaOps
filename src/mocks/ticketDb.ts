@@ -18,10 +18,7 @@ import type {
 } from '@/types/ticket'
 import type { RelatedTicketDto } from '@/types/asset'
 
-type TenantId = 'tenant-a' | 'tenant-b'
-
 const statusFlow: TicketStatus[] = ['pending', 'processing', 'review', 'done']
-const tenantIds: TenantId[] = ['tenant-a', 'tenant-b']
 const priorities: TicketPriority[] = ['low', 'medium', 'high', 'urgent']
 const assignees = ['Tom', 'Jerry', 'Alice', 'Nova Team']
 
@@ -31,8 +28,8 @@ const uuid = (prefix: string) => {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}_${Date.now()}`
 }
 
-const formatTicketId = (tenantId: TenantId, index: number) => {
-  return `${tenantId === 'tenant-a' ? 'A' : 'B'}-TICKET-${String(index).padStart(4, '0')}`
+const formatTicketId = (index: number) => {
+  return `A-TICKET-${String(index).padStart(4, '0')}`
 }
 
 const createTimelineItem = (payload: Partial<TicketTimelineItemDto>): TicketTimelineItemDto => {
@@ -52,72 +49,67 @@ const seedTickets = () => {
     return
   }
 
-  let idCounter = 1
-  tenantIds.forEach((tenantId) => {
-    for (let index = 0; index < 24; index += 1) {
-      const status = statusFlow[index % statusFlow.length] || 'pending'
-      const priority = priorities[index % priorities.length] || 'medium'
-      const createdAt = dayjs().subtract(index + (tenantId === 'tenant-a' ? 0 : 5), 'day')
-      const updatedAt = createdAt.add((index % 6) + 1, 'hour')
-      const ticketId = formatTicketId(tenantId, idCounter)
-      const assignee = assignees[index % assignees.length] || 'Nova Team'
-      tickets.push({
-        id: ticketId,
-        tenantId,
-        title: `${tenantId.toUpperCase()} 网络与终端巡检异常 #${idCounter}`,
-        description: `巡检发现异常指标，需排查交换机/终端策略。工单编号 ${ticketId}。`,
-        status,
-        priority,
-        assignee,
-        creator: tenantId === 'tenant-a' ? 'admin' : 'staff',
-        createdAt: createdAt.toISOString(),
-        updatedAt: updatedAt.toISOString(),
-        dueDate: createdAt.add(3, 'day').toISOString(),
-        assetIds: [`ASSET-${idCounter}`, `ASSET-${idCounter + 100}`],
-        timeline: [
-          createTimelineItem({
-            action: 'create',
-            operator: tenantId === 'tenant-a' ? 'admin' : 'staff',
-            toStatus: 'pending',
-            remark: '创建工单',
-            createdAt: createdAt.toISOString(),
-          }),
-          createTimelineItem({
-            action: 'advance',
-            operator: 'Tom',
-            fromStatus: 'pending',
-            toStatus: status === 'pending' ? 'pending' : 'processing',
-            remark: '首次响应',
-            createdAt: createdAt.add(2, 'hour').toISOString(),
-          }),
-        ],
-        comments: [
-          {
-            id: uuid('cm'),
-            author: 'Tom',
-            content: '收到，正在排查日志。',
-            createdAt: createdAt.add(3, 'hour').toISOString(),
-          },
-          {
-            id: uuid('cm'),
-            author: 'Alice',
-            content: '已补充现场截图。',
-            createdAt: createdAt.add(6, 'hour').toISOString(),
-          },
-        ],
-        attachments: [],
-      })
-      idCounter += 1
-    }
-  })
+  for (let index = 0; index < 24; index += 1) {
+    const status = statusFlow[index % statusFlow.length] || 'pending'
+    const priority = priorities[index % priorities.length] || 'medium'
+    const createdAt = dayjs().subtract(index, 'day')
+    const updatedAt = createdAt.add((index % 6) + 1, 'hour')
+    const ticketId = formatTicketId(index + 1)
+    const assignee = assignees[index % assignees.length] || 'Nova Team'
+    tickets.push({
+      id: ticketId,
+      title: `A 网络与终端巡检异常 #${index + 1}`,
+      description: `巡检发现异常指标，需排查交换机/终端策略。工单编号 ${ticketId}。`,
+      status,
+      priority,
+      assignee,
+      creator: 'admin',
+      createdAt: createdAt.toISOString(),
+      updatedAt: updatedAt.toISOString(),
+      dueDate: createdAt.add(3, 'day').toISOString(),
+      assetIds: [`ASSET-${index + 1}`, `ASSET-${index + 101}`],
+      timeline: [
+        createTimelineItem({
+          action: 'create',
+          operator: 'admin',
+          toStatus: 'pending',
+          remark: '创建工单',
+          createdAt: createdAt.toISOString(),
+        }),
+        createTimelineItem({
+          action: 'advance',
+          operator: 'Tom',
+          fromStatus: 'pending',
+          toStatus: status === 'pending' ? 'pending' : 'processing',
+          remark: '首次响应',
+          createdAt: createdAt.add(2, 'hour').toISOString(),
+        }),
+      ],
+      comments: [
+        {
+          id: uuid('cm'),
+          author: 'Tom',
+          content: '收到，正在排查日志。',
+          createdAt: createdAt.add(3, 'hour').toISOString(),
+        },
+        {
+          id: uuid('cm'),
+          author: 'Alice',
+          content: '已补充现场截图。',
+          createdAt: createdAt.add(6, 'hour').toISOString(),
+        },
+      ],
+      attachments: [],
+    })
+  }
 }
 
 seedTickets()
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
-const findTicket = (tenantId: string, ticketId: string) => {
-  return tickets.find((item) => item.tenantId === tenantId && item.id === ticketId) || null
+const findTicket = (ticketId: string) => {
+  return tickets.find((item) => item.id === ticketId) || null
 }
 
 const toListItem = (ticket: TicketDetailDto): TicketListItemDto => {
@@ -134,14 +126,13 @@ const toListItem = (ticket: TicketDetailDto): TicketListItemDto => {
   }
 }
 
-export const queryTicketsByTenant = (
-  tenantId: string,
+export const queryTickets = (
   query: TicketListQueryDto
 ): PageResult<TicketListItemDto> => {
   const page = Math.max(Number(query.page || 1), 1)
   const pageSize = Math.max(Number(query.pageSize || 10), 1)
 
-  let filtered = tickets.filter((ticket) => ticket.tenantId === tenantId)
+  let filtered = [...tickets]
 
   if (query.status) {
     filtered = filtered.filter((ticket) => ticket.status === query.status)
@@ -181,24 +172,22 @@ export const queryTicketsByTenant = (
   }
 }
 
-export const getTicketDetailByTenant = (tenantId: string, ticketId: string) => {
-  const ticket = findTicket(tenantId, ticketId)
+export const getTicketDetail = (ticketId: string) => {
+  const ticket = findTicket(ticketId)
   if (!ticket) {
     return null
   }
   return clone(ticket)
 }
 
-export const createTicketByTenant = (
-  tenantId: string,
+export const createTicket = (
   username: string,
   payload: CreateTicketDto
 ): TicketDetailDto => {
   const now = dayjs().toISOString()
-  const nextId = formatTicketId(tenantId as TenantId, tickets.length + 1)
+  const nextId = formatTicketId(tickets.length + 1)
   const ticket: TicketDetailDto = {
     id: nextId,
-    tenantId,
     title: payload.title,
     description: payload.description,
     status: 'pending',
@@ -225,13 +214,12 @@ export const createTicketByTenant = (
   return clone(ticket)
 }
 
-export const updateTicketByTenant = (
-  tenantId: string,
+export const updateTicket = (
   ticketId: string,
   username: string,
   payload: UpdateTicketDto
 ) => {
-  const ticket = findTicket(tenantId, ticketId)
+  const ticket = findTicket(ticketId)
   if (!ticket) {
     return null
   }
@@ -264,13 +252,12 @@ const ILLEGAL_TRANSITION_MSG: Record<string, string> = {
   close: '待处理的工单不可直接关闭，或工单已关闭',
 }
 
-export const actionTicketByTenant = (
-  tenantId: string,
+export const actionTicket = (
   ticketId: string,
   username: string,
   payload: TicketActionDto
 ) => {
-  const ticket = findTicket(tenantId, ticketId)
+  const ticket = findTicket(ticketId)
   if (!ticket) {
     return null
   }
@@ -342,21 +329,20 @@ export const actionTicketByTenant = (
   return clone(ticket)
 }
 
-export const listTicketCommentsByTenant = (tenantId: string, ticketId: string): TicketCommentDto[] | null => {
-  const ticket = findTicket(tenantId, ticketId)
+export const listTicketComments = (ticketId: string): TicketCommentDto[] | null => {
+  const ticket = findTicket(ticketId)
   if (!ticket) {
     return null
   }
   return clone(ticket.comments.sort((a, b) => dayjs(b.createdAt).valueOf() - dayjs(a.createdAt).valueOf()))
 }
 
-export const createTicketCommentByTenant = (
-  tenantId: string,
+export const createTicketComment = (
   ticketId: string,
   username: string,
   payload: CreateCommentDto
 ) => {
-  const ticket = findTicket(tenantId, ticketId)
+  const ticket = findTicket(ticketId)
   if (!ticket) {
     return null
   }
@@ -371,12 +357,11 @@ export const createTicketCommentByTenant = (
   return clone(comment)
 }
 
-export const uploadTicketAttachmentByTenant = (
-  tenantId: string,
+export const uploadTicketAttachment = (
   ticketId: string,
   payload: UploadAttachmentDto
 ): TicketAttachmentDto | null => {
-  const ticket = findTicket(tenantId, ticketId)
+  const ticket = findTicket(ticketId)
   if (!ticket) {
     return null
   }
@@ -392,9 +377,9 @@ export const uploadTicketAttachmentByTenant = (
   return clone(attachment)
 }
 
-export const listRelatedTicketsByAsset = (tenantId: string, assetId: string): RelatedTicketDto[] => {
+export const listRelatedTicketsByAsset = (assetId: string): RelatedTicketDto[] => {
   const related = tickets
-    .filter((ticket) => ticket.tenantId === tenantId && ticket.assetIds.includes(assetId))
+    .filter((ticket) => ticket.assetIds.includes(assetId))
     .sort((a, b) => dayjs(b.updatedAt).valueOf() - dayjs(a.updatedAt).valueOf())
     .slice(0, 8)
     .map((ticket) => ({

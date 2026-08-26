@@ -42,7 +42,6 @@ export interface TicketListItemDto {
 }
 
 export interface TicketDetailDto extends TicketListItemDto {
-  tenantId: string
   description: string
   dueDate?: string
   timeline: TicketTimelineItemDto[]

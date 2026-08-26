@@ -13,14 +13,10 @@ import type {
 } from '@/types/asset'
 import { listMockUsers } from './db'
 
-type TenantId = 'tenant-a' | 'tenant-b'
-
 interface InternalAsset extends Omit<AssetDetailDto, 'relatedTickets'> {
-  tenantId: string
   history: string[]
 }
 
-const tenants: TenantId[] = ['tenant-a', 'tenant-b']
 const assetTypes: AssetType[] = ['server', 'laptop', 'network', 'license']
 const assetStatuses: AssetStatus[] = ['stock', 'in_use', 'scrapped']
 const locations = ['上海机房-A区', '北京机房-B区', '深圳办公区', '杭州容灾机房']
@@ -37,33 +33,28 @@ const ensureSeed = () => {
   if (assets.length) {
     return
   }
-  let index = 1
-  tenants.forEach((tenantId) => {
-    for (let i = 1; i <= 180; i += 1) {
-      const type = assetTypes[i % assetTypes.length] || 'server'
-      const status = assetStatuses[i % assetStatuses.length] || 'stock'
-      const createdAt = dayjs().subtract(i % 60, 'day')
-      const ownerCandidates = enabledUsers()
-      const owner = status === 'in_use' ? ownerCandidates[i % ownerCandidates.length] || null : null
-      assets.push({
-        id: `ASSET-${i}`,
-        tenantId,
-        assetNo: `ASSET-${tenantId === 'tenant-a' ? 'A' : 'B'}-${String(i).padStart(4, '0')}`,
-        name: `${tenantId === 'tenant-a' ? 'A' : 'B'}-${type.toUpperCase()}-${String(index).padStart(3, '0')}`,
-        type,
-        status,
-        ownerId: owner?.id || null,
-        ownerName: owner?.displayName || null,
-        location: locations[i % locations.length] || '上海机房-A区',
-        purchaseDate: createdAt.subtract(120, 'day').format('YYYY-MM-DD'),
-        updatedAt: createdAt.toISOString(),
-        spec: `${type} spec ${i} / CPU ${(i % 8) + 1}C / RAM ${(i % 16) + 8}G`,
-        remark: '自动生成的 Mock 资产',
-        history: [`${dayjs(createdAt).format('YYYY-MM-DD')} 入库`],
-      })
-      index += 1
-    }
-  })
+  for (let i = 1; i <= 180; i += 1) {
+    const type = assetTypes[i % assetTypes.length] || 'server'
+    const status = assetStatuses[i % assetStatuses.length] || 'stock'
+    const createdAt = dayjs().subtract(i % 60, 'day')
+    const ownerCandidates = enabledUsers()
+    const owner = status === 'in_use' ? ownerCandidates[i % ownerCandidates.length] || null : null
+    assets.push({
+      id: `ASSET-${i}`,
+      assetNo: `ASSET-A-${String(i).padStart(4, '0')}`,
+      name: `A-${type.toUpperCase()}-${String(i).padStart(3, '0')}`,
+      type,
+      status,
+      ownerId: owner?.id || null,
+      ownerName: owner?.displayName || null,
+      location: locations[i % locations.length] || '上海机房-A区',
+      purchaseDate: createdAt.subtract(120, 'day').format('YYYY-MM-DD'),
+      updatedAt: createdAt.toISOString(),
+      spec: `${type} spec ${i} / CPU ${(i % 8) + 1}C / RAM ${(i % 16) + 8}G`,
+      remark: '自动生成的 Mock 资产',
+      history: [`${dayjs(createdAt).format('YYYY-MM-DD')} 入库`],
+    })
+  }
 }
 
 ensureSeed()
@@ -100,18 +91,17 @@ const toDetailBase = (asset: InternalAsset): Omit<AssetDetailDto, 'relatedTicket
   }
 }
 
-const findAsset = (tenantId: string, id: string) => {
-  return assets.find((asset) => asset.tenantId === tenantId && asset.id === id) || null
+const findAsset = (id: string) => {
+  return assets.find((asset) => asset.id === id) || null
 }
 
-export const queryAssetsByTenant = (
-  tenantId: string,
+export const queryAssets = (
   query: AssetListQueryDto
 ): PageResult<AssetListItemDto> => {
   const page = Math.max(Number(query.page || 1), 1)
   const pageSize = Math.max(Number(query.pageSize || 10), 1)
 
-  let filtered = assets.filter((item) => item.tenantId === tenantId)
+  let filtered = [...assets]
 
   if (query.status) {
     filtered = filtered.filter((item) => item.status === query.status)
@@ -144,17 +134,17 @@ export const queryAssetsByTenant = (
   })
 }
 
-export const getAssetDetailByTenant = (tenantId: string, id: string): Omit<AssetDetailDto, 'relatedTickets'> | null => {
-  const asset = findAsset(tenantId, id)
+export const getAssetDetail = (id: string): Omit<AssetDetailDto, 'relatedTickets'> | null => {
+  const asset = findAsset(id)
   if (!asset) {
     return null
   }
   return clone(toDetailBase(asset))
 }
 
-export const getAssetsByIdsByTenant = (tenantId: string, ids: string[]): AssetSimpleDto[] => {
+export const getAssetsByIds = (ids: string[]): AssetSimpleDto[] => {
   const list = assets
-    .filter((item) => item.tenantId === tenantId && ids.includes(item.id))
+    .filter((item) => ids.includes(item.id))
     .map((item) => ({
       id: item.id,
       name: item.name,
@@ -163,13 +153,12 @@ export const getAssetsByIdsByTenant = (tenantId: string, ids: string[]): AssetSi
   return clone(list)
 }
 
-export const createAssetByTenant = (tenantId: string, payload: CreateAssetDto) => {
+export const createAsset = (payload: CreateAssetDto) => {
   const id = `mock-asset-${assets.length + 1000}`
   const assetNo = `ASSET-MOCK-${String(assets.length + 1000).padStart(4, '0')}`
   const now = dayjs().toISOString()
   const asset: InternalAsset = {
     id,
-    tenantId,
     assetNo,
     name: payload.name,
     type: payload.type,
@@ -187,8 +176,8 @@ export const createAssetByTenant = (tenantId: string, payload: CreateAssetDto) =
   return clone(toDetailBase(asset))
 }
 
-export const updateAssetByTenant = (tenantId: string, id: string, payload: UpdateAssetDto) => {
-  const asset = findAsset(tenantId, id)
+export const updateAsset = (id: string, payload: UpdateAssetDto) => {
+  const asset = findAsset(id)
   if (!asset) {
     return null
   }
@@ -202,8 +191,8 @@ export const updateAssetByTenant = (tenantId: string, id: string, payload: Updat
   return clone(toDetailBase(asset))
 }
 
-export const actionAssetByTenant = (tenantId: string, id: string, username: string, payload: AssetActionDto) => {
-  const asset = findAsset(tenantId, id)
+export const actionAsset = (id: string, username: string, payload: AssetActionDto) => {
+  const asset = findAsset(id)
   if (!asset) {
     return null
   }

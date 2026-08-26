@@ -22,13 +22,13 @@ public class KbFileStorage {
     if(!ALLOWED.contains(extension)) throw new BusinessException(400,"仅支持 md/pdf/doc/docx 文件");
     return extension;
   }
-  public Path save(String tenantId,String documentId,MultipartFile file){
+  public Path save(String documentId,MultipartFile file){
     if(file.isEmpty()) throw new BusinessException(400,"上传文件不能为空");
     if(file.getSize()>properties.getMaxFileSizeBytes()) throw new BusinessException(400,"文件超过允许的大小上限");
     String ext=extension(file.getOriginalFilename());
     try {
       Path root=Path.of(properties.getStoragePath()).toAbsolutePath().normalize();
-      Path directory=root.resolve(tenantId).resolve(documentId).normalize();
+      Path directory=root.resolve(documentId).normalize();
       if(!directory.startsWith(root)) throw new BusinessException(400,"非法存储路径");
       Files.createDirectories(directory);
       Path target=directory.resolve("source."+ext);

@@ -16,7 +16,6 @@ export interface KbVersionDto {
 }
 
 export interface KbDetailDto extends KbListItemDto {
-  tenantId: string
   content: string
 }
 
@@ -35,6 +34,6 @@ export interface SaveKbDto {
 }
 
 export type KbDocumentStatus = 'PARSING' | 'VECTORIZING' | 'READY' | 'FAILED'
-export interface KbDocumentDto { id:string; tenantId:string; title:string; fileName:string; fileType:'md'|'pdf'|'doc'|'docx'; fileSize:number; status:KbDocumentStatus; chunkCount:number; errorMsg?:string; createdBy:string; createdAt:string; updatedAt:string }
-export interface KbChunkDto { id:string; documentId:string; tenantId:string; chunkIndex:number; content:string; vectorId:string }
+export interface KbDocumentDto { id:string; title:string; fileName:string; fileType:'md'|'pdf'|'doc'|'docx'; fileSize:number; status:KbDocumentStatus; chunkCount:number; errorMsg?:string; createdBy:string; createdAt:string; updatedAt:string }
+export interface KbChunkDto { id:string; documentId:string; chunkIndex:number; content:string; vectorId:string }
 export interface KbDocumentQueryDto { page:number; pageSize:number; keyword?:string; fileType?:string; status?:KbDocumentStatus }

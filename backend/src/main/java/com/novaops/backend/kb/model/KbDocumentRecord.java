@@ -1,8 +1,8 @@
 package com.novaops.backend.kb.model;
 import java.time.LocalDateTime;
 public class KbDocumentRecord {
-  private String id,tenantId,title,fileName,fileType,storagePath,status,errorMsg,createdBy; private Long fileSize; private Integer chunkCount; private LocalDateTime createdAt,updatedAt;
-  public String getId(){return id;} public void setId(String v){id=v;} public String getTenantId(){return tenantId;} public void setTenantId(String v){tenantId=v;}
+  private String id,title,fileName,fileType,storagePath,status,errorMsg,createdBy; private Long fileSize; private Integer chunkCount; private LocalDateTime createdAt,updatedAt;
+  public String getId(){return id;} public void setId(String v){id=v;}
   public String getTitle(){return title;} public void setTitle(String v){title=v;} public String getFileName(){return fileName;} public void setFileName(String v){fileName=v;}
   public String getFileType(){return fileType;} public void setFileType(String v){fileType=v;} public Long getFileSize(){return fileSize;} public void setFileSize(Long v){fileSize=v;}
   public String getStoragePath(){return storagePath;} public void setStoragePath(String v){storagePath=v;} public String getStatus(){return status;} public void setStatus(String v){status=v;}
