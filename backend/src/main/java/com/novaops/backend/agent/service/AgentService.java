@@ -33,17 +33,17 @@ public class AgentService {
     SseEmitter emitter=new SseEmitter(timeout); AtomicReference<Disposable> upstream=new AtomicReference<>(); emitter.onCompletion(()->dispose(upstream));emitter.onTimeout(()->{dispose(upstream);emitter.complete();});emitter.onError(error->dispose(upstream));
     ConversationRecord conversation=resolveConversation(session,request); saveMessage(conversation.getId(),"user",request.getContent(),null,null);
     RetrievalResult retrieval;
-    try{retrieval=retrievalService.retrieve(session.getTenantId(),request.getContent(),topK,minScore);}catch(Exception ex){completeFixed(emitter,conversation.getId(),"知识库服务暂不可用，请稍后重试。",false,"vector_store_unavailable",List.of());return emitter;}
+    try{retrieval=retrievalService.retrieve(request.getContent(),topK,minScore);}catch(Exception ex){completeFixed(emitter,conversation.getId(),"知识库服务暂不可用，请稍后重试。",false,"vector_store_unavailable",List.of());return emitter;}
     if(retrieval.isEmpty()){completeFixed(emitter,conversation.getId(),REFUSAL,true,"no_reliable_context",List.of());return emitter;}
     String prompt=buildPrompt(request.getContent(),retrieval.chunks()); StringBuilder buffer=new StringBuilder(); long started=System.currentTimeMillis();
     Disposable disposable=chatClient.prompt().system(SYSTEM).user(prompt).stream().content().subscribe(buffer::append,error->sendError(emitter,conversation.getId(),"模型服务暂不可用，请稍后重试。"),()->finishGenerated(emitter,conversation.getId(),prompt,buffer.toString(),retrieval.chunks(),started)); upstream.set(disposable);
     return emitter;
   }
-  public List<ConversationRecord> conversations(CurrentSession session){return mapper.listConversations(session.getTenantId(),session.getUserId());}
-  public ConversationDetailResponse detail(CurrentSession session,String id){ConversationRecord conversation=mapper.findConversation(session.getTenantId(),session.getUserId(),id);if(conversation==null)throw new BusinessException(404,"会话不存在");return new ConversationDetailResponse(conversation,mapper.listMessages(id));}
+  public List<ConversationRecord> conversations(CurrentSession session){return mapper.listConversations(session.getUserId());}
+  public ConversationDetailResponse detail(CurrentSession session,String id){ConversationRecord conversation=mapper.findConversation(session.getUserId(),id);if(conversation==null)throw new BusinessException(404,"会话不存在");return new ConversationDetailResponse(conversation,mapper.listMessages(id));}
   private ConversationRecord resolveConversation(CurrentSession session,ChatRequest request){
-    if(request.getConversationId()!=null&&!request.getConversationId().isBlank()){ConversationRecord existing=mapper.findConversation(session.getTenantId(),session.getUserId(),request.getConversationId());if(existing==null)throw new BusinessException(404,"会话不存在");return existing;}
-    ConversationRecord record=new ConversationRecord();record.setId(IdGenerator.randomId("conv"));record.setTenantId(session.getTenantId());record.setUserId(session.getUserId());record.setTitle(request.getContent().substring(0,Math.min(40,request.getContent().length())));mapper.insertConversation(record);return mapper.findConversation(session.getTenantId(),session.getUserId(),record.getId());
+    if(request.getConversationId()!=null&&!request.getConversationId().isBlank()){ConversationRecord existing=mapper.findConversation(session.getUserId(),request.getConversationId());if(existing==null)throw new BusinessException(404,"会话不存在");return existing;}
+    ConversationRecord record=new ConversationRecord();record.setId(IdGenerator.randomId("conv"));record.setUserId(session.getUserId());record.setTitle(request.getContent().substring(0,Math.min(40,request.getContent().length())));mapper.insertConversation(record);return mapper.findConversation(session.getUserId(),record.getId());
   }
   private String buildPrompt(String question,List<RetrievalChunk> chunks){StringBuilder context=new StringBuilder("知识库资料：\n");for(int i=0;i<chunks.size();i++)context.append('[').append(i+1).append("] 来源：").append(chunks.get(i).documentName()).append('\n').append(chunks.get(i).content()).append("\n\n");return context.append("用户问题：").append(question).toString();}
   private void finishGenerated(SseEmitter emitter,String conversationId,String prompt,String answer,List<RetrievalChunk> chunks,long started){
