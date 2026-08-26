@@ -37,11 +37,10 @@ public class KbDocumentService {
     String original = file.getOriginalFilename() == null ? "document" : file.getOriginalFilename();
     String type = storage.extension(original);
     String id = IdGenerator.randomId("doc");
-    Path path = storage.save(session.getTenantId(), id, file);
+    Path path = storage.save(id, file);
 
     KbDocumentRecord document = new KbDocumentRecord();
     document.setId(id);
-    document.setTenantId(session.getTenantId());
     document.setTitle(title == null || title.isBlank() ? original : title.trim());
     document.setFileName(original);
     document.setFileType(type);
@@ -53,41 +52,41 @@ public class KbDocumentService {
 
     mapper.insertDocument(document);
     ingestion.process(document);
-    return mapper.findDocument(session.getTenantId(), id);
+    return mapper.findDocument(id);
   }
 
   public PageResult<KbDocumentRecord> list(CurrentSession session, KbDocumentQuery query) {
     authService.assertAdmin(session);
     int offset = (query.getPage() - 1) * query.getPageSize();
     return new PageResult<>(
-        mapper.listDocuments(session.getTenantId(), query.getKeyword(), query.getFileType(), query.getStatus(), offset, query.getPageSize()),
+        mapper.listDocuments(query.getKeyword(), query.getFileType(), query.getStatus(), offset, query.getPageSize()),
         query.getPage(),
         query.getPageSize(),
-        mapper.countDocuments(session.getTenantId(), query.getKeyword(), query.getFileType(), query.getStatus()));
+        mapper.countDocuments(query.getKeyword(), query.getFileType(), query.getStatus()));
   }
 
   public KbDocumentRecord detail(CurrentSession session, String id) {
     authService.assertAdmin(session);
-    return requireDocument(session.getTenantId(), id);
+    return requireDocument(id);
   }
 
   public List<KbChunkRecord> chunks(CurrentSession session, String id) {
     authService.assertAdmin(session);
-    requireDocument(session.getTenantId(), id);
-    return mapper.listChunks(session.getTenantId(), id);
+    requireDocument(id);
+    return mapper.listChunks(id);
   }
 
   public void updateTitle(CurrentSession session, String id, String title) {
     authService.assertAdmin(session);
-    requireDocument(session.getTenantId(), id);
-    mapper.updateTitle(session.getTenantId(), id, title.trim());
+    requireDocument(id);
+    mapper.updateTitle(id, title.trim());
   }
 
   @Transactional
   public void delete(CurrentSession session, String id) {
     authService.assertAdmin(session);
-    KbDocumentRecord document = requireDocument(session.getTenantId(), id);
-    List<KbChunkRecord> chunks = mapper.listChunks(session.getTenantId(), id);
+    KbDocumentRecord document = requireDocument(id);
+    List<KbChunkRecord> chunks = mapper.listChunks(id);
     // 向量删除在最前且不可回滚：失败直接中止，文档保留、可稍后重试
     try {
       if (!chunks.isEmpty()) {
@@ -96,22 +95,22 @@ public class KbDocumentService {
     } catch (Exception ex) {
       throw new BusinessException(503, "向量库不可用，文档未删除，可稍后重试");
     }
-    mapper.deleteChunks(session.getTenantId(), id);
-    mapper.softDeleteDocument(session.getTenantId(), id);
+    mapper.deleteChunks(id);
+    mapper.softDeleteDocument(id);
     storage.delete(Path.of(document.getStoragePath()));
   }
 
   public KbDocumentRecord replace(CurrentSession session, String id, String title, MultipartFile file) {
     authService.assertAdmin(session);
-    requireDocument(session.getTenantId(), id);
+    requireDocument(id);
     // 先上传新文档、再删旧文档：上传校验失败（类型/大小）时旧文档原样保留，避免替换失败丢数据
     KbDocumentRecord created = upload(session, title, file);
     delete(session, id);
     return created;
   }
 
-  private KbDocumentRecord requireDocument(String tenantId, String id) {
-    KbDocumentRecord document = mapper.findDocument(tenantId, id);
+  private KbDocumentRecord requireDocument(String id) {
+    KbDocumentRecord document = mapper.findDocument(id);
     if (document == null) {
       throw new BusinessException(404, "知识库文档不存在");
     }

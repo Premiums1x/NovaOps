@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.novaops.backend.kb.mapper.KbMapper">
-  <insert id="insertDocument">insert into kb_document(id,tenant_id,title,file_name,file_type,file_size,storage_path,status,chunk_count,error_msg,created_by,created_at,updated_at,deleted) values(#{id},#{tenantId},#{title},#{fileName},#{fileType},#{fileSize},#{storagePath},#{status},0,null,#{createdBy},now(),now(),0)</insert>
-  <select id="findDocument" resultType="com.novaops.backend.kb.model.KbDocumentRecord">select * from kb_document where tenant_id=#{tenantId} and id=#{id} and deleted=0 limit 1</select>
-  <select id="listDocuments" resultType="com.novaops.backend.kb.model.KbDocumentRecord">select * from kb_document where tenant_id=#{tenantId} and deleted=0 <if test="keyword != null and keyword != ''">and (title like concat('%',#{keyword},'%') or file_name like concat('%',#{keyword},'%'))</if><if test="fileType != null and fileType != ''">and file_type=#{fileType}</if><if test="status != null and status != ''">and status=#{status}</if> order by updated_at desc limit #{offset},#{pageSize}</select>
-  <select id="countDocuments" resultType="long">select count(1) from kb_document where tenant_id=#{tenantId} and deleted=0 <if test="keyword != null and keyword != ''">and (title like concat('%',#{keyword},'%') or file_name like concat('%',#{keyword},'%'))</if><if test="fileType != null and fileType != ''">and file_type=#{fileType}</if><if test="status != null and status != ''">and status=#{status}</if></select>
-  <update id="updateStatus">update kb_document set status=#{status},chunk_count=#{chunkCount},error_msg=#{errorMsg},updated_at=now() where tenant_id=#{tenantId} and id=#{id}</update>
-  <update id="updateTitle">update kb_document set title=#{title},updated_at=now() where tenant_id=#{tenantId} and id=#{id} and deleted=0</update>
+  <insert id="insertDocument">insert into kb_document(id,title,file_name,file_type,file_size,storage_path,status,chunk_count,error_msg,created_by,created_at,updated_at,deleted) values(#{id},#{title},#{fileName},#{fileType},#{fileSize},#{storagePath},#{status},0,null,#{createdBy},now(),now(),0)</insert>
+  <select id="findDocument" resultType="com.novaops.backend.kb.model.KbDocumentRecord">select * from kb_document where id=#{id} and deleted=0 limit 1</select>
+  <select id="listDocuments" resultType="com.novaops.backend.kb.model.KbDocumentRecord">select * from kb_document where deleted=0 <if test="keyword != null and keyword != ''">and (title like concat('%',#{keyword},'%') or file_name like concat('%',#{keyword},'%'))</if><if test="fileType != null and fileType != ''">and file_type=#{fileType}</if><if test="status != null and status != ''">and status=#{status}</if> order by updated_at desc limit #{offset},#{pageSize}</select>
+  <select id="countDocuments" resultType="long">select count(1) from kb_document where deleted=0 <if test="keyword != null and keyword != ''">and (title like concat('%',#{keyword},'%') or file_name like concat('%',#{keyword},'%'))</if><if test="fileType != null and fileType != ''">and file_type=#{fileType}</if><if test="status != null and status != ''">and status=#{status}</if></select>
+  <update id="updateStatus">update kb_document set status=#{status},chunk_count=#{chunkCount},error_msg=#{errorMsg},updated_at=now() where id=#{id}</update>
+  <update id="updateTitle">update kb_document set title=#{title},updated_at=now() where id=#{id} and deleted=0</update>
   <insert id="insertChunks">
-    insert into kb_chunk(id,document_id,tenant_id,chunk_index,content,vector_id) values
-    <foreach collection="records" item="record" separator=",">(#{record.id},#{record.documentId},#{record.tenantId},#{record.chunkIndex},#{record.content},#{record.vectorId})</foreach>
+    insert into kb_chunk(id,document_id,chunk_index,content,vector_id) values
+    <foreach collection="records" item="record" separator=",">(#{record.id},#{record.documentId},#{record.chunkIndex},#{record.content},#{record.vectorId})</foreach>
   </insert>
-  <select id="listChunks" resultType="com.novaops.backend.kb.model.KbChunkRecord">select * from kb_chunk where tenant_id=#{tenantId} and document_id=#{documentId} order by chunk_index</select>
-  <delete id="deleteChunks">delete from kb_chunk where tenant_id=#{tenantId} and document_id=#{documentId}</delete>
-  <update id="softDeleteDocument">update kb_document set deleted=1,updated_at=now() where tenant_id=#{tenantId} and id=#{id}</update>
+  <select id="listChunks" resultType="com.novaops.backend.kb.model.KbChunkRecord">select * from kb_chunk where document_id=#{documentId} order by chunk_index</select>
+  <delete id="deleteChunks">delete from kb_chunk where document_id=#{documentId}</delete>
+  <update id="softDeleteDocument">update kb_document set deleted=1,updated_at=now() where id=#{id}</update>
 </mapper>
