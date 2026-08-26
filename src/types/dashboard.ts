@@ -2,7 +2,7 @@ export interface DashboardOverviewDto {
   ticketTotal: number
   doneRate: number
   avgHandleHours: number
-  slaRate: number
+  urgentRate: number
 }
 
 export interface DashboardTrendDto {
