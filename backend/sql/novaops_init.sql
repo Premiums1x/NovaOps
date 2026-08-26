@@ -89,7 +89,6 @@ create table sys_email_verification (
 
 create table kb_document (
   id varchar(64) primary key,
-  tenant_id varchar(64) not null,
   title varchar(255) not null,
   file_name varchar(255) not null,
   file_type varchar(16) not null,
@@ -102,29 +101,26 @@ create table kb_document (
   created_at datetime not null default current_timestamp,
   updated_at datetime not null default current_timestamp,
   deleted tinyint not null default 0,
-  index idx_kb_document_tenant_status (tenant_id, status),
-  index idx_kb_document_tenant_updated (tenant_id, updated_at desc)
+  index idx_kb_document_status (status),
+  index idx_kb_document_updated (updated_at desc)
 );
 
 create table kb_chunk (
   id varchar(64) primary key,
   document_id varchar(64) not null,
-  tenant_id varchar(64) not null,
   chunk_index int not null,
   content mediumtext not null,
   vector_id varchar(64) not null,
-  index idx_kb_chunk_document (document_id, chunk_index),
-  index idx_kb_chunk_tenant (tenant_id)
+  index idx_kb_chunk_document (document_id, chunk_index)
 );
 
 create table agent_conversation (
   id varchar(64) primary key,
-  tenant_id varchar(64) not null,
   user_id varchar(64) not null,
   title varchar(255) not null,
   created_at datetime not null default current_timestamp,
   updated_at datetime not null default current_timestamp,
-  index idx_agent_conversation_owner (tenant_id,user_id,updated_at desc)
+  index idx_agent_conversation_owner (user_id,updated_at desc)
 );
 
 create table agent_message (
@@ -140,7 +136,6 @@ create table agent_message (
 
 create table biz_ticket (
   id varchar(64) primary key,
-  tenant_id varchar(64) not null,
   title varchar(255) not null,
   description text not null,
   status varchar(32) not null,
@@ -150,9 +145,9 @@ create table biz_ticket (
   due_date datetime null,
   created_at datetime not null,
   updated_at datetime not null,
-  index idx_ticket_tenant_updated (tenant_id, updated_at desc),
-  index idx_ticket_tenant_status (tenant_id, status),
-  index idx_ticket_tenant_priority (tenant_id, priority)
+  index idx_ticket_updated (updated_at desc),
+  index idx_ticket_status (status),
+  index idx_ticket_priority (priority)
 );
 
 create table biz_ticket_timeline (
@@ -194,7 +189,6 @@ create table biz_ticket_attachment (
 
 create table biz_asset (
   id varchar(64) primary key,
-  tenant_id varchar(64) not null,
   asset_no varchar(64) not null,
   name varchar(200) not null,
   type varchar(32) not null,
@@ -208,15 +202,14 @@ create table biz_asset (
   created_at datetime not null,
   updated_at datetime not null,
   deleted tinyint not null default 0,
-  unique key uk_asset_tenant_no (tenant_id, asset_no),
-  index idx_asset_status (tenant_id, status),
-  index idx_asset_owner (tenant_id, owner_id)
+  unique key uk_asset_no (asset_no),
+  index idx_asset_status (status),
+  index idx_asset_owner (owner_id)
 );
 
 create table biz_asset_log (
   id varchar(64) primary key,
   asset_id varchar(64) not null,
-  tenant_id varchar(64) not null,
   action varchar(32) not null,
   operator_id varchar(64) not null,
   target_user_id varchar(64) null,
@@ -312,15 +305,11 @@ insert into sys_menu (id, title, name, path, component, icon, permission_code, k
   ('staff-ticket-list', '工单列表', 'TicketList', '/ticket/list', 'TicketListView', null, 'ticket:view', 1, 'staff-ticket', 21, 'staff'),
   ('guest-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'guest');
 
-insert into biz_ticket (id, tenant_id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at) values
-  ('A-TICKET-0001', 'tenant-a', 'TENANT-A 网络与终端巡检异常 #1', '巡检发现交换机端口丢包，需要排查链路质量。', 'pending', 'medium', 'Tom', 'admin', '2026-04-25 18:00:00', '2026-04-20 09:00:00', '2026-04-20 11:00:00'),
-  ('A-TICKET-0002', 'tenant-a', 'TENANT-A VPN 访问波动 #2', '多名员工反馈 VPN 间歇性掉线，需排查网关与策略。', 'processing', 'high', 'Jerry', 'admin', '2026-04-24 18:00:00', '2026-04-19 10:00:00', '2026-04-20 12:30:00'),
-  ('A-TICKET-0003', 'tenant-a', 'TENANT-A 终端补丁异常 #3', 'Windows 补丁安装失败，影响办公终端安全合规。', 'review', 'urgent', 'Alice', 'staff', '2026-04-23 18:00:00', '2026-04-18 13:00:00', '2026-04-20 14:00:00'),
-  ('A-TICKET-0004', 'tenant-a', 'TENANT-A 日志采集恢复验证 #4', '采集链路已恢复，需要复核日志完整性与时间同步。', 'done', 'low', 'Nova Team', 'staff', '2026-04-22 18:00:00', '2026-04-17 14:00:00', '2026-04-20 15:00:00'),
-  ('B-TICKET-0001', 'tenant-b', 'TENANT-B 网络与终端巡检异常 #1', '巡检发现无线接入稳定性下降，需要排查 AP 负载。', 'pending', 'medium', 'Tom', 'staff', '2026-04-25 18:00:00', '2026-04-20 09:30:00', '2026-04-20 10:30:00'),
-  ('B-TICKET-0002', 'tenant-b', 'TENANT-B VPN 访问波动 #2', 'VPN 用户偶发认证失败，需要检查认证链路。', 'processing', 'high', 'Jerry', 'staff', '2026-04-24 18:00:00', '2026-04-19 11:00:00', '2026-04-20 12:10:00'),
-  ('B-TICKET-0003', 'tenant-b', 'TENANT-B 终端补丁异常 #3', '部分终端安装补丁后蓝屏，需进行版本回归。', 'review', 'urgent', 'Alice', 'staff', '2026-04-23 18:00:00', '2026-04-18 16:00:00', '2026-04-20 14:20:00'),
-  ('B-TICKET-0004', 'tenant-b', 'TENANT-B 日志采集恢复验证 #4', '日志转发延迟问题已经缓解，需要确认数据完整。', 'done', 'low', 'Nova Team', 'staff', '2026-04-22 18:00:00', '2026-04-17 15:00:00', '2026-04-20 15:20:00');
+insert into biz_ticket (id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at) values
+  ('A-TICKET-0001', 'TENANT-A 网络与终端巡检异常 #1', '巡检发现交换机端口丢包，需要排查链路质量。', 'pending', 'medium', 'Tom', 'admin', '2026-04-25 18:00:00', '2026-04-20 09:00:00', '2026-04-20 11:00:00'),
+  ('A-TICKET-0002', 'TENANT-A VPN 访问波动 #2', '多名员工反馈 VPN 间歇性掉线，需排查网关与策略。', 'processing', 'high', 'Jerry', 'admin', '2026-04-24 18:00:00', '2026-04-19 10:00:00', '2026-04-20 12:30:00'),
+  ('A-TICKET-0003', 'TENANT-A 终端补丁异常 #3', 'Windows 补丁安装失败，影响办公终端安全合规。', 'review', 'urgent', 'Alice', 'staff', '2026-04-23 18:00:00', '2026-04-18 13:00:00', '2026-04-20 14:00:00'),
+  ('A-TICKET-0004', 'TENANT-A 日志采集恢复验证 #4', '采集链路已恢复，需要复核日志完整性与时间同步。', 'done', 'low', 'Nova Team', 'staff', '2026-04-22 18:00:00', '2026-04-17 14:00:00', '2026-04-20 15:00:00');
 
 insert into biz_ticket_asset_rel (ticket_id, asset_id) values
   ('A-TICKET-0001', 'ASSET-1'),
@@ -328,11 +317,7 @@ insert into biz_ticket_asset_rel (ticket_id, asset_id) values
   ('A-TICKET-0002', 'ASSET-2'),
   ('A-TICKET-0002', 'ASSET-102'),
   ('A-TICKET-0003', 'ASSET-3'),
-  ('A-TICKET-0004', 'ASSET-4'),
-  ('B-TICKET-0001', 'ASSET-5'),
-  ('B-TICKET-0002', 'ASSET-6'),
-  ('B-TICKET-0003', 'ASSET-7'),
-  ('B-TICKET-0004', 'ASSET-8');
+  ('A-TICKET-0004', 'ASSET-4');
 
 insert into biz_ticket_timeline (id, ticket_id, action, operator, remark, from_status, to_status, created_at) values
   ('tl-a1-1', 'A-TICKET-0001', 'create', 'admin', '创建工单', null, 'pending', '2026-04-20 09:00:00'),
@@ -342,21 +327,11 @@ insert into biz_ticket_timeline (id, ticket_id, action, operator, remark, from_s
   ('tl-a3-1', 'A-TICKET-0003', 'create', 'staff', '创建工单', null, 'pending', '2026-04-18 13:00:00'),
   ('tl-a3-2', 'A-TICKET-0003', 'advance', 'Alice', '进入复核', 'processing', 'review', '2026-04-20 14:00:00'),
   ('tl-a4-1', 'A-TICKET-0004', 'create', 'staff', '创建工单', null, 'pending', '2026-04-17 14:00:00'),
-  ('tl-a4-2', 'A-TICKET-0004', 'close', 'Nova Team', '处理完成', 'review', 'done', '2026-04-20 15:00:00'),
-  ('tl-b1-1', 'B-TICKET-0001', 'create', 'staff', '创建工单', null, 'pending', '2026-04-20 09:30:00'),
-  ('tl-b1-2', 'B-TICKET-0001', 'advance', 'Tom', '首次响应', 'pending', 'processing', '2026-04-20 10:30:00'),
-  ('tl-b2-1', 'B-TICKET-0002', 'create', 'staff', '创建工单', null, 'pending', '2026-04-19 11:00:00'),
-  ('tl-b2-2', 'B-TICKET-0002', 'assign', 'staff', '列表页指派', 'pending', 'processing', '2026-04-20 12:10:00'),
-  ('tl-b3-1', 'B-TICKET-0003', 'create', 'staff', '创建工单', null, 'pending', '2026-04-18 16:00:00'),
-  ('tl-b3-2', 'B-TICKET-0003', 'advance', 'Alice', '进入复核', 'processing', 'review', '2026-04-20 14:20:00'),
-  ('tl-b4-1', 'B-TICKET-0004', 'create', 'staff', '创建工单', null, 'pending', '2026-04-17 15:00:00'),
-  ('tl-b4-2', 'B-TICKET-0004', 'close', 'Nova Team', '处理完成', 'review', 'done', '2026-04-20 15:20:00');
+  ('tl-a4-2', 'A-TICKET-0004', 'close', 'Nova Team', '处理完成', 'review', 'done', '2026-04-20 15:00:00');
 
 insert into biz_ticket_comment (id, ticket_id, author, content, created_at) values
   ('cm-a1-1', 'A-TICKET-0001', 'Tom', '收到，正在排查核心交换机日志。', '2026-04-20 11:20:00'),
-  ('cm-a1-2', 'A-TICKET-0001', 'Alice', '已补充现场截图。', '2026-04-20 12:10:00'),
-  ('cm-b2-1', 'B-TICKET-0002', 'Jerry', '已确认问题与认证链路有关。', '2026-04-20 12:30:00');
+  ('cm-a1-2', 'A-TICKET-0001', 'Alice', '已补充现场截图。', '2026-04-20 12:10:00');
 
 insert into biz_ticket_attachment (id, ticket_id, name, url, size, created_at) values
-  ('att-a1-1', 'A-TICKET-0001', 'switch-log.txt', '/mock-attachments/A-TICKET-0001/switch-log.txt', 20480, '2026-04-20 12:00:00'),
-  ('att-b2-1', 'B-TICKET-0002', 'vpn-auth-report.pdf', '/mock-attachments/B-TICKET-0002/vpn-auth-report.pdf', 53248, '2026-04-20 12:40:00');
+  ('att-a1-1', 'A-TICKET-0001', 'switch-log.txt', '/mock-attachments/A-TICKET-0001/switch-log.txt', 20480, '2026-04-20 12:00:00');
