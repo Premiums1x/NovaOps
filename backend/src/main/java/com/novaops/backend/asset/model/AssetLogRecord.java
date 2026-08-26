@@ -6,7 +6,6 @@ public class AssetLogRecord {
 
   private String id;
   private String assetId;
-  private String tenantId;
   private String action;
   private String operatorId;
   private String targetUserId;
@@ -27,14 +26,6 @@ public class AssetLogRecord {
 
   public void setAssetId(String assetId) {
     this.assetId = assetId;
-  }
-
-  public String getTenantId() {
-    return tenantId;
-  }
-
-  public void setTenantId(String tenantId) {
-    this.tenantId = tenantId;
   }
 
   public String getAction() {

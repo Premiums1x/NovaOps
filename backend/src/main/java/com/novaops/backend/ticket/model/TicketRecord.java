@@ -5,7 +5,6 @@ import java.time.LocalDateTime;
 public class TicketRecord {
 
   private String id;
-  private String tenantId;
   private String title;
   private String description;
   private String status;
@@ -22,14 +21,6 @@ public class TicketRecord {
 
   public void setId(String id) {
     this.id = id;
-  }
-
-  public String getTenantId() {
-    return tenantId;
-  }
-
-  public void setTenantId(String tenantId) {
-    this.tenantId = tenantId;
   }
 
   public String getTitle() {

@@ -53,7 +53,6 @@ public class TicketService {
     LocalDateTime endDate = DateTimeUtils.parseIsoDateTime(query.getEndDate());
 
     long total = ticketMapper.countTickets(
-        session.getTenantId(),
         query.getStatus(),
         query.getPriority(),
         query.getKeyword(),
@@ -62,7 +61,6 @@ public class TicketService {
     );
 
     List<TicketRecord> records = ticketMapper.queryTickets(
-        session.getTenantId(),
         query.getStatus(),
         query.getPriority(),
         query.getKeyword(),
@@ -81,7 +79,7 @@ public class TicketService {
   }
 
   public TicketDetailResponse detail(CurrentSession session, String ticketId) {
-    TicketRecord record = requireTicket(session.getTenantId(), ticketId);
+    TicketRecord record = requireTicket(ticketId);
     return buildDetail(record);
   }
 
@@ -90,8 +88,7 @@ public class TicketService {
     TicketRecord record = new TicketRecord();
     LocalDateTime now = LocalDateTime.now();
 
-    record.setId(IdGenerator.ticketId(session.getTenantId()));
-    record.setTenantId(session.getTenantId());
+    record.setId(IdGenerator.ticketId());
     record.setTitle(request.getTitle());
     record.setDescription(request.getDescription());
     record.setStatus("pending");
@@ -111,7 +108,7 @@ public class TicketService {
 
   @Transactional
   public TicketDetailResponse update(CurrentSession session, String ticketId, UpdateTicketRequest request) {
-    TicketRecord record = requireTicket(session.getTenantId(), ticketId);
+    TicketRecord record = requireTicket(ticketId);
 
     if (StringUtils.hasText(request.getTitle())) {
       record.setTitle(request.getTitle());
@@ -154,7 +151,7 @@ public class TicketService {
     };
     authService.requirePermission(session, requiredPermission);
 
-    TicketRecord record = requireTicket(session.getTenantId(), ticketId);
+    TicketRecord record = requireTicket(ticketId);
     String previousStatus = record.getStatus();
 
     // 状态机前置校验：非法转移直接拒绝（409），防止跨状态倒退/重复关单/越权流转
@@ -241,13 +238,13 @@ public class TicketService {
   }
 
   public List<TicketCommentResponse> comments(CurrentSession session, String ticketId) {
-    requireTicket(session.getTenantId(), ticketId);
+    requireTicket(ticketId);
     return ticketMapper.listComments(ticketId).stream().map(this::toComment).toList();
   }
 
   @Transactional
   public TicketCommentResponse createComment(CurrentSession session, String ticketId, CreateCommentRequest request) {
-    TicketRecord record = requireTicket(session.getTenantId(), ticketId);
+    TicketRecord record = requireTicket(ticketId);
     LocalDateTime now = LocalDateTime.now();
 
     TicketCommentRecord comment = new TicketCommentRecord();
@@ -265,7 +262,7 @@ public class TicketService {
 
   @Transactional
   public TicketAttachmentResponse uploadAttachment(CurrentSession session, String ticketId, UploadAttachmentRequest request) {
-    TicketRecord record = requireTicket(session.getTenantId(), ticketId);
+    TicketRecord record = requireTicket(ticketId);
     LocalDateTime now = LocalDateTime.now();
 
     TicketAttachmentRecord attachment = new TicketAttachmentRecord();
@@ -282,8 +279,8 @@ public class TicketService {
     return toAttachment(attachment);
   }
 
-  private TicketRecord requireTicket(String tenantId, String ticketId) {
-    TicketRecord record = ticketMapper.findTicket(tenantId, ticketId);
+  private TicketRecord requireTicket(String ticketId) {
+    TicketRecord record = ticketMapper.findTicket(ticketId);
     if (record == null) {
       throw new BusinessException(404, "工单不存在");
     }
@@ -293,7 +290,6 @@ public class TicketService {
   private TicketDetailResponse buildDetail(TicketRecord record) {
     TicketDetailResponse response = new TicketDetailResponse();
     response.setId(record.getId());
-    response.setTenantId(record.getTenantId());
     response.setTitle(record.getTitle());
     response.setDescription(record.getDescription());
     response.setStatus(record.getStatus());
