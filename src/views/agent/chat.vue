@@ -44,7 +44,7 @@ onMounted(() => {
     </aside>
     <main class="chat-panel">
       <header class="chat-head">
-        <div><strong>NovaOps 企业知识助手</strong><span>当前会话与租户数据严格隔离</span></div>
+        <div><strong>NovaOps 企业知识助手</strong><span>回答均基于企业知识库并附来源引用</span></div>
         <span class="online-badge"><i></i> 服务在线</span>
       </header>
       <ChatCore />

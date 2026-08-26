@@ -94,14 +94,13 @@ public class QdrantVectorGateway {
     }
   }
 
-  public List<RetrievalChunk> search(String tenantId, String query, int topK, double minScore) {
+  public List<RetrievalChunk> search(String query, int topK, double minScore) {
     float[] vector = embeddingModel.embed(query);
     ensureCollection(vector.length);
-    Map<String, Object> filter = Map.of("must", List.of(Map.of("key", "tenantId", "match", Map.of("value", tenantId))));
     JsonNode root = client.post()
         .uri("/collections/{collection}/points/search", properties.getQdrantCollection())
         .contentType(MediaType.APPLICATION_JSON)
-        .body(Map.of("vector", vector, "limit", topK, "score_threshold", minScore, "with_payload", true, "filter", filter))
+        .body(Map.of("vector", vector, "limit", topK, "score_threshold", minScore, "with_payload", true))
         .retrieve()
         .body(JsonNode.class);
     List<RetrievalChunk> result = new ArrayList<>();

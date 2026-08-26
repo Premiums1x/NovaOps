@@ -6,7 +6,6 @@ import java.time.LocalDateTime;
 public class AssetRecord {
 
   private String id;
-  private String tenantId;
   private String assetNo;
   private String name;
   private String type;
@@ -27,14 +26,6 @@ public class AssetRecord {
 
   public void setId(String id) {
     this.id = id;
-  }
-
-  public String getTenantId() {
-    return tenantId;
-  }
-
-  public void setTenantId(String tenantId) {
-    this.tenantId = tenantId;
   }
 
   public String getAssetNo() {

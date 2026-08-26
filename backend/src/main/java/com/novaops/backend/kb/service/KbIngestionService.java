@@ -40,7 +40,7 @@ public class KbIngestionService {
       if (chunks.isEmpty()) {
         throw new IllegalStateException("文档未解析出有效文本");
       }
-      mapper.updateStatus(source.getTenantId(), source.getId(), "VECTORIZING", 0, null);
+      mapper.updateStatus(source.getId(), "VECTORIZING", 0, null);
 
       List<QdrantVectorGateway.VectorPoint> vectors = new ArrayList<>();
       List<KbChunkRecord> records = new ArrayList<>();
@@ -48,12 +48,11 @@ public class KbIngestionService {
         String chunkId = IdGenerator.randomId("chunk");
         String vectorId = UUID.randomUUID().toString();
         vectorIds.add(vectorId);
-        Map<String, Object> metadata = Map.of("tenantId", source.getTenantId(), "documentId", source.getId(), "chunkId", chunkId, "documentName", source.getTitle());
+        Map<String, Object> metadata = Map.of("documentId", source.getId(), "chunkId", chunkId, "documentName", source.getTitle());
         vectors.add(new QdrantVectorGateway.VectorPoint(vectorId, chunks.get(index), metadata));
         KbChunkRecord record = new KbChunkRecord();
         record.setId(chunkId);
         record.setDocumentId(source.getId());
-        record.setTenantId(source.getTenantId());
         record.setChunkIndex(index);
         record.setContent(chunks.get(index));
         record.setVectorId(vectorId);
@@ -61,7 +60,7 @@ public class KbIngestionService {
       }
       vectorStore.add(vectors);
       mapper.insertChunks(records);
-      mapper.updateStatus(source.getTenantId(), source.getId(), "READY", records.size(), null);
+      mapper.updateStatus(source.getId(), "READY", records.size(), null);
     } catch (Exception ex) {
       if (!vectorIds.isEmpty()) {
         try {
@@ -70,7 +69,7 @@ public class KbIngestionService {
         }
       }
       String message = ex.getMessage() == null ? "解析或向量化失败" : ex.getMessage();
-      mapper.updateStatus(source.getTenantId(), source.getId(), "FAILED", 0, message.substring(0, Math.min(900, message.length())));
+      mapper.updateStatus(source.getId(), "FAILED", 0, message.substring(0, Math.min(900, message.length())));
     }
   }
 

@@ -9,8 +9,6 @@ public class UserProfileResponse {
   private String displayName;
   private List<String> roles;
   private List<String> permissions;
-  private String tenantId;
-  private List<TenantInfoResponse> tenants;
 
   public String getId() {
     return id;
@@ -50,21 +48,5 @@ public class UserProfileResponse {
 
   public void setPermissions(List<String> permissions) {
     this.permissions = permissions;
-  }
-
-  public String getTenantId() {
-    return tenantId;
-  }
-
-  public void setTenantId(String tenantId) {
-    this.tenantId = tenantId;
-  }
-
-  public List<TenantInfoResponse> getTenants() {
-    return tenants;
-  }
-
-  public void setTenants(List<TenantInfoResponse> tenants) {
-    this.tenants = tenants;
   }
 }

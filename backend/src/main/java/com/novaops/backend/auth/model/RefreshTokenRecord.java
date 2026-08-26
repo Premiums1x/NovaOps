@@ -6,7 +6,6 @@ public class RefreshTokenRecord {
 
   private String token;
   private String userId;
-  private String tenantId;
   private LocalDateTime expiresAt;
   private Boolean revoked;
 
@@ -24,14 +23,6 @@ public class RefreshTokenRecord {
 
   public void setUserId(String userId) {
     this.userId = userId;
-  }
-
-  public String getTenantId() {
-    return tenantId;
-  }
-
-  public void setTenantId(String tenantId) {
-    this.tenantId = tenantId;
   }
 
   public LocalDateTime getExpiresAt() {

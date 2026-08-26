@@ -20,7 +20,7 @@ afterAll(() => {
 })
 
 const getUserOptions = async (username: string) => {
-  const session = buildSession({ username, tenantId: 'tenant-a' })
+  const session = buildSession({ username })
   return fetch('http://localhost:3000/api/auth/user-options', {
     headers: { Authorization: `Bearer ${session.accessToken}` },
   })
