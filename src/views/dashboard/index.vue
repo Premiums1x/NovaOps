@@ -59,11 +59,13 @@ const barRef = ref<HTMLDivElement>()
 const trendChart = ref<ECharts>()
 const pieChart = ref<ECharts>()
 const barChart = ref<ECharts>()
+let chartResizeObserver: ResizeObserver | undefined
 
 const greeting = computed(() => {
   const name = authStore.user?.displayName || authStore.user?.username || 'User'
   return `Hi, ${name}`
 })
+const canViewTickets = computed(() => authStore.permissions.includes('ticket:view'))
 
 const applyQuickRange = (days: number) => {
   rangeValue.value = [dayjs().subtract(days - 1, 'day').startOf('day'), dayjs().endOf('day')]
@@ -74,14 +76,17 @@ const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
   textStyle: { color: chartColors().text },
   tooltip: { trigger: 'axis' },
   legend: { data: ['新增工单', '完成工单'], textStyle: { color: chartColors().text } },
-  grid: { left: 40, right: 20, top: 30, bottom: 24 },
+  grid: { left: 46, right: 20, top: 42, bottom: 30 },
   xAxis: {
     type: 'category',
     data: data.trend.dates,
     boundaryGap: false,
+    axisLine: { lineStyle: { color: chartColors().border } },
+    axisLabel: { color: chartColors().secondary },
   },
   yAxis: {
     type: 'value',
+    axisLabel: { color: chartColors().secondary },
     splitLine: { lineStyle: { type: 'dashed', color: chartColors().border } },
   },
   series: [
@@ -89,7 +94,10 @@ const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
       name: '新增工单',
       type: 'line',
       smooth: true,
-      areaStyle: { opacity: 0.08 },
+      symbol: 'circle',
+      symbolSize: 7,
+      lineStyle: { width: 3 },
+      areaStyle: { opacity: 0.1 },
       data: data.trend.created,
       color: chartColors().primary,
     },
@@ -97,6 +105,9 @@ const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
       name: '完成工单',
       type: 'line',
       smooth: true,
+      symbol: 'circle',
+      symbolSize: 7,
+      lineStyle: { width: 3 },
       areaStyle: { opacity: 0.08 },
       data: data.trend.closed,
       color: '#52c41a',
@@ -119,6 +130,7 @@ const createPieOption = (data: DashboardMetricsDto): ECOption => ({
       radius: ['36%', '65%'],
       center: ['64%', '50%'],
       label: { formatter: '{b}\n{d}%' },
+      color: [chartColors().primary, '#22c55e', '#f59e0b', '#8b5cf6'],
       data: data.categories,
     },
   ],
@@ -135,6 +147,7 @@ const createBarOption = (data: DashboardMetricsDto): ECOption => ({
   yAxis: {
     type: 'category',
     data: data.durations.map((item) => item.name),
+    axisLabel: { color: chartColors().secondary },
   },
   series: [
     {
@@ -180,10 +193,20 @@ const initCharts = async () => {
   if (!barChart.value && barRef.value) {
     barChart.value = init(barRef.value)
   }
+  if (!chartResizeObserver) {
+    chartResizeObserver = new ResizeObserver(resizeAllCharts)
+    ;[trendRef.value, pieRef.value, barRef.value].forEach((element) => {
+      if (element) chartResizeObserver?.observe(element)
+    })
+  }
   renderCharts()
 }
 
 const fetchMetrics = async () => {
+  if (!canViewTickets.value) {
+    metrics.value = null
+    return
+  }
   const [start, end] = rangeValue.value
   loading.value = true
   try {
@@ -191,9 +214,9 @@ const fetchMetrics = async () => {
       startDate: start.toISOString(),
       endDate: end.toISOString(),
     })
-    await initCharts()
   } finally {
     loading.value = false
+    await initCharts()
   }
 }
 
@@ -220,11 +243,12 @@ onMounted(() => {
 })
 
 onActivated(() => {
-  resizeAllCharts()
+  void initCharts()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeAllCharts)
+  chartResizeObserver?.disconnect()
   trendChart.value?.dispose()
   pieChart.value?.dispose()
   barChart.value?.dispose()
@@ -233,6 +257,12 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="dashboard-page">
+    <a-alert
+      v-if="!canViewTickets"
+      type="info"
+      show-icon
+      message="当前身份没有工单查看权限，暂时无法生成工单统计。"
+    />
     <a-card :bordered="false" class="welcome-card">
       <div class="welcome-head">
         <div>
@@ -249,14 +279,14 @@ onBeforeUnmount(() => {
       </div>
     </a-card>
 
-    <a-row :gutter="12" class="overview-row">
-      <a-col :span="6">
-        <a-card :loading="loading" :bordered="false">
+    <a-row :gutter="[12, 12]" class="overview-row">
+      <a-col :xs="24" :sm="12" :xl="6">
+        <a-card :loading="loading" :bordered="false" class="metric-card metric-blue">
           <a-statistic title="工单总量" :value="metrics?.overview.ticketTotal || 0" />
         </a-card>
       </a-col>
-      <a-col :span="6">
-        <a-card :loading="loading" :bordered="false">
+      <a-col :xs="24" :sm="12" :xl="6">
+        <a-card :loading="loading" :bordered="false" class="metric-card metric-green">
           <a-statistic
             title="完成率"
             :value="metrics?.overview.doneRate || 0"
@@ -265,8 +295,8 @@ onBeforeUnmount(() => {
           />
         </a-card>
       </a-col>
-      <a-col :span="6">
-        <a-card :loading="loading" :bordered="false">
+      <a-col :xs="24" :sm="12" :xl="6">
+        <a-card :loading="loading" :bordered="false" class="metric-card metric-orange">
           <a-statistic
             title="平均处理时长"
             :value="metrics?.overview.avgHandleHours || 0"
@@ -275,28 +305,28 @@ onBeforeUnmount(() => {
           />
         </a-card>
       </a-col>
-      <a-col :span="6">
-        <a-card :loading="loading" :bordered="false">
-          <a-statistic title="SLA 达成率" :value="metrics?.overview.slaRate || 0" :precision="1" suffix="%" />
+      <a-col :xs="24" :sm="12" :xl="6">
+        <a-card :loading="loading" :bordered="false" class="metric-card metric-violet">
+          <a-statistic title="紧急工单占比" :value="metrics?.overview.urgentRate || 0" :precision="1" suffix="%" />
         </a-card>
       </a-col>
     </a-row>
 
-    <a-row :gutter="12">
-      <a-col :span="16">
-        <a-card title="工单趋势" :loading="loading" :bordered="false">
-          <div ref="trendRef" class="chart-box chart-line"></div>
+    <a-row :gutter="[12, 12]">
+      <a-col :xs="24" :xl="16">
+        <a-card title="工单趋势" :bordered="false" class="chart-card">
+          <a-spin :spinning="loading" class="chart-spin"><div ref="trendRef" class="chart-box chart-line"></div></a-spin>
         </a-card>
       </a-col>
-      <a-col :span="8">
-        <a-card title="工单分类占比" :loading="loading" :bordered="false">
-          <div ref="pieRef" class="chart-box chart-pie"></div>
+      <a-col :xs="24" :xl="8">
+        <a-card title="工单状态分布" :bordered="false" class="chart-card">
+          <a-spin :spinning="loading" class="chart-spin"><div ref="pieRef" class="chart-box chart-pie"></div></a-spin>
         </a-card>
       </a-col>
     </a-row>
 
-    <a-card title="平均处理时长（小时）" :loading="loading" :bordered="false">
-      <div ref="barRef" class="chart-box chart-bar"></div>
+    <a-card title="平均处理时长（按优先级）" :bordered="false" class="chart-card">
+      <a-spin :spinning="loading" class="chart-spin"><div ref="barRef" class="chart-box chart-bar"></div></a-spin>
     </a-card>
   </main>
 </template>
@@ -308,7 +338,9 @@ onBeforeUnmount(() => {
 }
 
 .welcome-card {
-  border-radius: 10px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--nova-primary) 9%, var(--nova-surface)), var(--nova-surface) 55%);
 }
 
 .welcome-head {
@@ -327,6 +359,11 @@ onBeforeUnmount(() => {
   margin-bottom: 0;
 }
 
+.metric-card,.chart-card{height:100%;overflow:hidden;border:1px solid color-mix(in srgb,var(--nova-border) 78%,transparent);border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.05)}
+.metric-card{position:relative}.metric-card::before{position:absolute;top:0;right:0;left:0;height:3px;content:''}.metric-blue::before{background:var(--nova-primary)}.metric-green::before{background:#22c55e}.metric-orange::before{background:#f59e0b}.metric-violet::before{background:#8b5cf6}
+.metric-card :deep(.ant-statistic-content){font-weight:650;letter-spacing:-.03em}.metric-card :deep(.ant-statistic-title){color:var(--nova-text-secondary)}
+.chart-spin,.chart-spin :deep(.ant-spin-container){display:block;height:100%}
+
 .chart-box {
   width: 100%;
 }
@@ -340,6 +377,8 @@ onBeforeUnmount(() => {
 }
 
 .chart-bar {
-  height: 320px;
+  height: 300px;
 }
+
+@media(max-width:760px){.welcome-head{align-items:flex-start;flex-direction:column}.welcome-head :deep(.ant-space){width:100%;flex-wrap:wrap}.chart-line,.chart-pie{height:280px}.chart-bar{height:260px}}
 </style>

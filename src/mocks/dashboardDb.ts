@@ -56,7 +56,7 @@ export const buildDashboardMetrics = (
   const totalClosed = closed.reduce((sum, value) => sum + value, 0)
   const doneRate = totalCreated > 0 ? Math.round((totalClosed / totalCreated) * 1000) / 10 : 0
   const avgHandleHours = Math.round((12 + (hashSeed(tenantId, 'avg') % 26) * 0.35) * 10) / 10
-  const slaRate = Math.round((88 + (hashSeed(tenantId, 'sla') % 11) * 0.7) * 10) / 10
+  const urgentRate = Math.round((8 + (hashSeed(tenantId, 'urgent') % 11) * 0.7) * 10) / 10
 
   const categories = [
     { name: '故障工单', value: 32 + (hashSeed(tenantId, 'fault') % 16) },
@@ -82,7 +82,7 @@ export const buildDashboardMetrics = (
       ticketTotal: totalCreated,
       doneRate,
       avgHandleHours,
-      slaRate,
+      urgentRate,
     },
     trend: {
       dates,
