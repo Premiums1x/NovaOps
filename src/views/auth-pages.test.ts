@@ -14,7 +14,6 @@ vi.mock('@/api/auth', () => ({
   loginApi: vi.fn(),
   registerApi: vi.fn(),
   verifyApi: vi.fn(),
-  switchTenantApi: vi.fn(),
   meApi: vi.fn(),
   refreshTokenApi: vi.fn(),
 }))
@@ -33,13 +32,13 @@ describe('authentication pages', () => {
     vi.clearAllMocks()
   })
 
-  it('uses the backend-supported tenant selector on login', async () => {
+  it('renders the login form without tenant/role selectors (single-tenant)', async () => {
     const router = await makeRouter([{ path: '/login', component: LoginView }], '/login')
     const wrapper = mount(LoginView, { global: { plugins: [antdPlugin, router] } })
     await flushPromises()
-    expect(wrapper.text()).toContain('Tenant A')
-    expect(wrapper.text()).toContain('租户')
-    expect(wrapper.text()).toContain('若账号不存在')
+    expect(wrapper.text()).not.toContain('租户')
+    expect(wrapper.text()).not.toContain('身份')
+    expect(wrapper.find('input[placeholder="请输入账号"]').exists()).toBe(true)
   })
 
   it('submits the email registration contract and returns to login', async () => {

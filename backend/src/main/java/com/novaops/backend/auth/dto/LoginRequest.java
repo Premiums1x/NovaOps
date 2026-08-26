@@ -10,11 +10,6 @@ public class LoginRequest {
   @NotBlank(message = "密码不能为空")
   private String password;
 
-  private String tenantId;
-
-  @NotBlank(message = "身份不能为空")
-  private String roleId;
-
   public String getUsername() {
     return username;
   }
@@ -29,21 +24,5 @@ public class LoginRequest {
 
   public void setPassword(String password) {
     this.password = password;
-  }
-
-  public String getTenantId() {
-    return tenantId;
-  }
-
-  public void setTenantId(String tenantId) {
-    this.tenantId = tenantId;
-  }
-
-  public String getRoleId() {
-    return roleId;
-  }
-
-  public void setRoleId(String roleId) {
-    this.roleId = roleId;
   }
 }

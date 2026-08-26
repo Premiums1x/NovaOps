@@ -57,37 +57,12 @@ const users: Record<string, MockUser> = {
 // 动态注册的用户
 const dynamicUsers = new Map<string, MockUser>()
 
-let userCounter = 0
-
 export const roles: RoleDto[] = [
   { id: 'role-admin', code: 'admin', name: '管理员', description: '管理用户、身份、知识库以及全部业务数据', permissions: ['auth:user:manage', 'dashboard:view', 'ticket:view', 'asset:view', 'kb:view', 'kb:edit', 'agent:chat'] },
   { id: 'role-staff', code: 'staff', name: '运维人员', description: '处理工单、资产与使用智能问答', permissions: ['dashboard:view', 'ticket:view', 'ticket:create', 'asset:view', 'agent:chat'] },
   { id: 'role-guest', code: 'guest', name: '访客', description: '只读访问授权看板与智能问答', permissions: ['dashboard:view', 'agent:chat'] },
   { id: 'role-member', code: 'member', name: '普通成员', description: '注册用户默认身份：只读看板、提交工单与智能问答', permissions: ['dashboard:view', 'ticket:create', 'agent:chat'] },
 ]
-
-export const createDynamicUser = (username: string, roleId: string): MockUser => {
-  if (users[username]) {
-    return users[username]
-  }
-  const role = roles.find(r => r.id === roleId)
-  if (!role) {
-    throw new Error(`Role not found: ${roleId}`)
-  }
-  const roleCode = role.code
-  userCounter++
-  const user: MockUser = {
-    id: `u-dyn-${userCounter}`,
-    username,
-    password: '123456',
-    displayName: username,
-    roles: [roleCode],
-    enabled: true,
-    createdAt: new Date().toISOString(),
-  }
-  dynamicUsers.set(username, user)
-  return user
-}
 
 // 注册验证（mock 内存实现）：token -> username
 const verificationTokens = new Map<string, string>()
@@ -435,17 +410,6 @@ export const refreshSession = (refreshToken: string) => {
     expiresIn: 1800,
     tenantId: payload.tenantId,
   }
-}
-
-export const switchTenantSession = (authorization: string | null, tenantId: string) => {
-  const session = getSessionFromAccessToken(authorization)
-  if (!session) {
-    return null
-  }
-  return buildSession({
-    username: session.username,
-    tenantId,
-  })
 }
 
 export const getSessionFromAccessToken = (authorization: string | null) => {

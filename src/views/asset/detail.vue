@@ -83,7 +83,7 @@ onMounted(() => {
             <a-button
               size="small"
               :loading="actionLoading"
-              :disabled="detail?.status === 'scrapped'"
+              :disabled="detail?.status !== 'in_use'"
               @click="doAction('receive')"
             >
               回收入库
@@ -104,14 +104,14 @@ onMounted(() => {
       </template>
 
       <a-descriptions :column="2" bordered size="small">
-        <a-descriptions-item label="资产编号">{{ detail?.id }}</a-descriptions-item>
+        <a-descriptions-item label="资产编号">{{ detail?.assetNo || '-' }}</a-descriptions-item>
         <a-descriptions-item label="资产状态">
           <a-tag v-if="detail" :color="statusColorMap[detail.status]">
             {{ statusTextMap[detail.status] }}
           </a-tag>
         </a-descriptions-item>
         <a-descriptions-item label="资产类型">{{ detail?.type }}</a-descriptions-item>
-        <a-descriptions-item label="领用人">{{ detail?.owner || '-' }}</a-descriptions-item>
+        <a-descriptions-item label="领用人">{{ detail?.ownerName || '-' }}</a-descriptions-item>
         <a-descriptions-item label="存放位置">{{ detail?.location }}</a-descriptions-item>
         <a-descriptions-item label="采购日期">{{ detail?.purchaseDate }}</a-descriptions-item>
         <a-descriptions-item label="更新时间">

@@ -16,8 +16,6 @@ export interface UserProfile {
 export interface LoginRequestDto {
   username: string
   password: string
-  tenantId?: string
-  roleId: string
 }
 
 export interface RegisterRequestDto {
@@ -43,6 +41,12 @@ export interface UserListItemDto {
   roleName: string
   enabled: boolean
   createdAt: string
+}
+
+export interface UserOptionDto {
+  id: string
+  username: string
+  displayName: string
 }
 
 export interface UserListQueryDto {

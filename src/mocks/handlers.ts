@@ -24,7 +24,6 @@ import {
   buildMenuData,
   buildSession,
   buildUserProfile,
-  createDynamicUser,
   getSessionFromAccessToken,
   getUser,
   refreshSession,
@@ -34,7 +33,6 @@ import {
   setMockUserPassword,
   setMockUserRole,
   setMockUserStatus,
-  switchTenantSession,
   verifyMockUser,
 } from './db'
 import {
@@ -117,32 +115,20 @@ export const handlers = [
     }
     await delay(350)
     const payload = (await request.json()) as LoginRequestDto
-    const tenantId = payload.tenantId || 'tenant-a'
 
-    let user = getUser(payload.username)
+    const user = getUser(payload.username)
     if (!user) {
-      // 用户不存在 → 自动创建（与后端行为一致：管理员身份不允许自助注册）
-      if (!payload.roleId) {
-        return fail(403, '身份不能为空')
-      }
-      if (!roles.some(r => r.id === payload.roleId)) {
-        return fail(403, '身份不存在')
-      }
-      if (payload.roleId === 'role-admin') {
-        return fail(403, '管理员账号不支持自助注册，请联系系统管理员创建')
-      }
-      user = createDynamicUser(payload.username, payload.roleId)
-    } else {
-      // 用户存在 → 校验密码
-      if (payload.password !== user.password) {
-        return fail(403, '账号或密码错误')
-      }
-      if (!user.enabled) return fail(403, '账号已被禁用')
+      // 用户不存在 → 模糊报错避免账号枚举（与后端一致，不再自助注册）
+      return fail(403, '账号或密码错误')
     }
+    if (payload.password !== user.password) {
+      return fail(403, '账号或密码错误')
+    }
+    if (!user.enabled) return fail(403, '账号未激活或已被禁用')
 
     const session = buildSession({
       username: user.username,
-      tenantId,
+      tenantId: 'tenant-a',
     })
     const data: LoginResponseDto = {
       ...session,
@@ -196,23 +182,6 @@ export const handlers = [
     return ok<AuthTokenDto>(nextSession, '刷新成功')
   }),
 
-  http.post('/api/auth/switch-tenant', async ({ request }) => {
-    if (shouldPassthroughTicketBackend) {
-      return passthrough()
-    }
-    await delay(220)
-    const payload = (await request.json()) as { tenantId: string }
-    const nextSession = switchTenantSession(request.headers.get('Authorization'), payload.tenantId)
-    if (!nextSession) {
-      return fail(401, 'token 无效，无法切换租户')
-    }
-    const data: LoginResponseDto = {
-      ...nextSession,
-      tenantId: nextSession.tenantId,
-    }
-    return ok(data, '租户切换成功')
-  }),
-
   http.get('/api/auth/me', async ({ request }) => {
     if (shouldPassthroughTicketBackend) {
       return passthrough()
@@ -251,6 +220,19 @@ export const handlers = [
     const enabledText = url.searchParams.get('enabled')
     const filtered = listMockUsers().filter((item) => (!keyword || `${item.username} ${item.displayName}`.toLowerCase().includes(keyword)) && (!roleId || item.roleId === roleId) && (enabledText === null || item.enabled === (enabledText === 'true')))
     return ok({ list: filtered.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: filtered.length })
+  }),
+
+  http.get('/api/auth/user-options', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session) return fail(401, 'token 无效')
+    const profile = buildUserProfile(session.username, session.tenantId)
+    if (!profile.permissions.includes('asset:claim')) return fail(403, '无权限执行该操作')
+    return ok(
+      listMockUsers()
+        .filter((user) => user.enabled)
+        .map(({ id, username, displayName }) => ({ id, username, displayName }))
+    )
   }),
 
   http.put('/api/auth/users/:id/status', async ({ request, params }) => {
@@ -460,6 +442,7 @@ export const handlers = [
   }),
 
   http.get('/api/assets', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
     await delay(220)
     const session = getSession(request)
     if (!session) {
@@ -477,6 +460,7 @@ export const handlers = [
   }),
 
   http.get('/api/assets/batch', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
     await delay(180)
     const session = getSession(request)
     if (!session) {
@@ -491,6 +475,7 @@ export const handlers = [
   }),
 
   http.get('/api/assets/:id', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
     await delay(220)
     const session = getSession(request)
     if (!session) {
@@ -508,6 +493,7 @@ export const handlers = [
   }),
 
   http.post('/api/assets', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
     await delay(240)
     const session = getSession(request)
     if (!session) {
@@ -526,6 +512,7 @@ export const handlers = [
   }),
 
   http.put('/api/assets/:id', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
     await delay(220)
     const session = getSession(request)
     if (!session) {
@@ -544,6 +531,7 @@ export const handlers = [
   }),
 
   http.post('/api/assets/:id/actions', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
     await delay(200)
     const session = getSession(request)
     if (!session) {
