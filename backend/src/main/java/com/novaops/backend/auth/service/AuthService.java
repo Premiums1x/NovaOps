@@ -7,6 +7,7 @@ import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.MenuItemResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
 import com.novaops.backend.auth.dto.RegisterRequest;
+import com.novaops.backend.auth.dto.RegisterResponse;
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
@@ -79,7 +80,7 @@ public class AuthService {
 
   /** 显式注册：创建未激活账号（enabled=0），生成验证 token 并发送激活邮件。 */
   @Transactional
-  public void register(RegisterRequest request) {
+  public RegisterResponse register(RegisterRequest request) {
     String username = request.getUsername().trim();
     String email = request.getEmail().trim().toLowerCase();
 
@@ -107,6 +108,8 @@ public class AuthService {
     String token = IdGenerator.randomId("ev");
     authMapper.insertEmailVerification(token, user.getId(), "register", LocalDateTime.now().plusHours(24));
     emailSender.sendVerificationEmail(email, token);
+    // log 降级模式：token 直接交回前端跳转激活页；smtp 模式为 null，仅走邮件
+    return new RegisterResponse(emailSender.activationTokenFor(token));
   }
 
   /** 邮箱激活：校验 token 后启用账号并强制首次改密。 */

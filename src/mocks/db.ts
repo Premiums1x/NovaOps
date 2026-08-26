@@ -68,7 +68,7 @@ export const roles: RoleDto[] = [
 const verificationTokens = new Map<string, string>()
 const registeredEmails = new Set<string>()
 
-export const registerMockUser = (username: string, email: string, password: string): void => {
+export const registerMockUser = (username: string, email: string, password: string): string => {
   if (users[username] || dynamicUsers.get(username)) {
     throw new Error('账号已存在')
   }
@@ -88,8 +88,9 @@ export const registerMockUser = (username: string, email: string, password: stri
   dynamicUsers.set(username, user)
   const token = `mock-ev-${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   verificationTokens.set(token, username)
-  // 模拟 LogEmailSender：激活链接打印到浏览器控制台
+  // 模拟 LogEmailSender：激活链接打印到浏览器控制台，同时把 token 交回注册接口
   console.log(`[激活邮件] 收件人=${email} 激活链接=http://localhost:5173/verify?token=${token}`)
+  return token
 }
 
 export const verifyMockUser = (token: string): boolean => {

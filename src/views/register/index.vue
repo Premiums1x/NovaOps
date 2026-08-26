@@ -16,7 +16,12 @@ const formState = reactive<RegisterRequestDto>({
 const handleRegister = async () => {
   submitting.value = true
   try {
-    await registerApi(formState)
+    const res = await registerApi(formState)
+    if (res?.activationToken) {
+      // log 降级模式：激活凭证由后端直接交回，跳转激活页完成激活
+      await router.replace({ path: '/verify', query: { token: res.activationToken } })
+      return
+    }
     message.success('注册成功，请查收激活邮件')
     await router.replace('/login')
   } catch {

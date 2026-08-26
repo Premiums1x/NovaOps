@@ -16,20 +16,23 @@ public class SmtpEmailSender implements EmailSender {
 
   private final JavaMailSender mailSender;
   private final String from;
+  private final String activationBaseUrl;
 
-  public SmtpEmailSender(JavaMailSender mailSender, @Value("${app.mail.from:}") String from) {
+  public SmtpEmailSender(JavaMailSender mailSender, @Value("${app.mail.from:}") String from,
+      @Value("${app.mail.activation-base-url:http://localhost:5173}") String activationBaseUrl) {
     this.mailSender = mailSender;
     this.from = from;
+    this.activationBaseUrl = activationBaseUrl;
   }
 
   @Override
   public void sendVerificationEmail(String to, String token) {
-    send(to, "NovaOps 邮箱验证", "点击链接激活账号：http://localhost:5173/verify?token=" + token);
+    send(to, "NovaOps 邮箱验证", "点击链接激活账号：" + activationBaseUrl + "/verify?token=" + token);
   }
 
   @Override
   public void sendResetPasswordEmail(String to, String token) {
-    send(to, "NovaOps 密码重置", "点击链接重置密码：http://localhost:5173/reset-password?token=" + token);
+    send(to, "NovaOps 密码重置", "点击链接重置密码：" + activationBaseUrl + "/reset-password?token=" + token);
   }
 
   private void send(String to, String subject, String text) {

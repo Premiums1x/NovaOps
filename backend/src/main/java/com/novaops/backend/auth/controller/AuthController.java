@@ -6,6 +6,7 @@ import com.novaops.backend.auth.dto.LoginResponse;
 import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.dto.RefreshTokenRequest;
 import com.novaops.backend.auth.dto.RegisterRequest;
+import com.novaops.backend.auth.dto.RegisterResponse;
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.UserProfileResponse;
 import com.novaops.backend.auth.dto.UserListQuery;
@@ -45,9 +46,8 @@ public class AuthController {
   }
 
   @PostMapping("/register")
-  public ApiResponse<Void> register(@Valid @RequestBody RegisterRequest request) {
-    authService.register(request);
-    return ApiResponse.success(null, "注册成功，请查收激活邮件");
+  public ApiResponse<RegisterResponse> register(@Valid @RequestBody RegisterRequest request) {
+    return ApiResponse.success(authService.register(request), "注册成功");
   }
 
   @GetMapping("/verify")

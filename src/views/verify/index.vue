@@ -38,7 +38,7 @@ onMounted(async () => {
         v-else-if="success"
         status="success"
         title="激活成功"
-        sub-title="账号已激活，首次登录需修改密码"
+        sub-title="账号已激活，可正常登录"
       >
         <template #extra>
           <a-button type="primary" @click="router.replace('/login')">去登录</a-button>

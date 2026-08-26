@@ -24,6 +24,11 @@ export interface RegisterRequestDto {
   password: string
 }
 
+export interface RegisterResponseDto {
+  /** log 本地降级模式下由后端直接返回，用于前端跳转激活页；smtp 模式为 null */
+  activationToken: string | null
+}
+
 export interface RoleDto {
   id: string
   code: string
