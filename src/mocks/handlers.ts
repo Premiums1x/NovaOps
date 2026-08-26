@@ -39,29 +39,29 @@ import {
   buildDashboardMetrics,
 } from './dashboardDb'
 import {
-  getKbDetailByTenant,
-  getKbVersionsByTenant,
-  queryKbListByTenant,
-  saveKbByTenant,
+  getKbDetail,
+  getKbVersions,
+  queryKbList,
+  saveKb,
 } from './kbDb'
 import {
-  actionAssetByTenant,
-  createAssetByTenant,
-  getAssetDetailByTenant,
-  getAssetsByIdsByTenant,
-  queryAssetsByTenant,
-  updateAssetByTenant,
+  actionAsset,
+  createAsset,
+  getAssetDetail,
+  getAssetsByIds,
+  queryAssets,
+  updateAsset,
 } from './assetDb'
 import {
-  actionTicketByTenant,
-  createTicketByTenant,
-  createTicketCommentByTenant,
-  getTicketDetailByTenant,
+  actionTicket,
+  createTicket,
+  createTicketComment,
+  getTicketDetail,
   listRelatedTicketsByAsset,
-  listTicketCommentsByTenant,
-  queryTicketsByTenant,
-  updateTicketByTenant,
-  uploadTicketAttachmentByTenant,
+  listTicketComments,
+  queryTickets,
+  updateTicket,
+  uploadTicketAttachment,
 } from './ticketDb'
 
 const ok = <T>(data: T, message = 'ok') => {
@@ -82,30 +82,11 @@ const fail = (code: number, message: string) => {
 
 const mockMode = (import.meta.env.VITE_ENABLE_MOCK || 'full').toLowerCase()
 const shouldPassthroughTicketBackend = mockMode === 'partial'
-const mockDocuments: KbDocumentDto[] = [{ id:'mock-doc-1',tenantId:'tenant-a',title:'NovaOps 使用手册',fileName:'novaops-guide.md',fileType:'md',fileSize:4096,status:'READY',chunkCount:2,createdBy:'u-admin',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString() }]
-const mockChunks: Record<string,KbChunkDto[]> = { 'mock-doc-1': [{id:'chunk-1',documentId:'mock-doc-1',tenantId:'tenant-a',chunkIndex:0,content:'NovaOps 是企业知识与运维协作平台。',vectorId:'vector-1'},{id:'chunk-2',documentId:'mock-doc-1',tenantId:'tenant-a',chunkIndex:1,content:'知识库文档按租户隔离，并支持 RAG 检索。',vectorId:'vector-2'}] }
+const mockDocuments: KbDocumentDto[] = [{ id:'mock-doc-1',title:'NovaOps 使用手册',fileName:'novaops-guide.md',fileType:'md',fileSize:4096,status:'READY',chunkCount:2,createdBy:'u-admin',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString() }]
+const mockChunks: Record<string,KbChunkDto[]> = { 'mock-doc-1': [{id:'chunk-1',documentId:'mock-doc-1',chunkIndex:0,content:'NovaOps 是企业知识与运维协作平台。',vectorId:'vector-1'},{id:'chunk-2',documentId:'mock-doc-1',chunkIndex:1,content:'知识库文档支持 RAG 检索并附带来源引用。',vectorId:'vector-2'}] }
 const mockConversations: ConversationDto[] = []
 const getSession = (request: Request) => {
-  const session = getSessionFromAccessToken(request.headers.get('Authorization'))
-  if (session) {
-    return session
-  }
-
-  const username = request.headers.get('X-NovaOps-Username')
-  const tenantId = request.headers.get('X-NovaOps-Tenant-Id')
-  if (!username || !tenantId) {
-    return null
-  }
-
-  const user = getUser(username)
-  if (!user) {
-    return null
-  }
-
-  return {
-    username: user.username,
-    tenantId,
-  }
+  return getSessionFromAccessToken(request.headers.get('Authorization'))
 }
 
 export const handlers = [
@@ -126,14 +107,8 @@ export const handlers = [
     }
     if (!user.enabled) return fail(403, '账号未激活或已被禁用')
 
-    const session = buildSession({
-      username: user.username,
-      tenantId: 'tenant-a',
-    })
-    const data: LoginResponseDto = {
-      ...session,
-      tenantId: session.tenantId,
-    }
+    const session = buildSession({ username: user.username })
+    const data: LoginResponseDto = { ...session }
     return ok(data, '登录成功')
   }),
 
@@ -191,7 +166,7 @@ export const handlers = [
     if (!session) {
       return fail(401, 'token 无效')
     }
-    const profile: UserProfile = buildUserProfile(session.username, session.tenantId)
+    const profile: UserProfile = buildUserProfile(session.username)
     return ok(profile)
   }),
 
@@ -204,7 +179,7 @@ export const handlers = [
     if (!session) {
       return fail(401, 'token 无效')
     }
-    const menuData: MenuDataDto = buildMenuData(session.username, session.tenantId)
+    const menuData: MenuDataDto = buildMenuData(session.username)
     return ok(menuData)
   }),
 
@@ -226,7 +201,7 @@ export const handlers = [
     if (shouldPassthroughTicketBackend) return passthrough()
     const session = getSession(request)
     if (!session) return fail(401, 'token 无效')
-    const profile = buildUserProfile(session.username, session.tenantId)
+    const profile = buildUserProfile(session.username)
     if (!profile.permissions.includes('asset:claim')) return fail(403, '无权限执行该操作')
     return ok(
       listMockUsers()
@@ -276,10 +251,10 @@ export const handlers = [
     if (!session) return fail(401, 'token 无效')
     const payload = await request.json() as { conversationId?: string; content: string }
     const conversationId = payload.conversationId || `mock-conv-${Date.now()}`
-    if (!payload.conversationId) mockConversations.unshift({ id: conversationId, tenantId: session.tenantId, userId: session.username, title: payload.content.slice(0, 40), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-    const answer = '根据知识库资料，NovaOps 会对文档按租户隔离，并在回答中提供可回溯引用。[1]'
+    if (!payload.conversationId) mockConversations.unshift({ id: conversationId, userId: session.username, title: payload.content.slice(0, 40), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    const answer = '根据知识库资料，NovaOps 会基于企业知识库文档提供带引用的回答。[1]'
     const frames = [...answer.matchAll(/.{1,12}/gu)].map((match) => `event: delta\ndata: ${JSON.stringify({ conversationId, content: match[0] })}\n\n`)
-    frames.push(`event: citation\ndata: ${JSON.stringify({ conversationId, citations: [{ index: 1, documentId: 'mock-doc-1', documentName: 'NovaOps 使用手册', chunkId: 'chunk-2', content: '知识库文档按租户隔离，并支持 RAG 检索。', score: .92 }] })}\n\n`)
+    frames.push(`event: citation\ndata: ${JSON.stringify({ conversationId, citations: [{ index: 1, documentId: 'mock-doc-1', documentName: 'NovaOps 使用手册', chunkId: 'chunk-2', content: '知识库文档支持 RAG 检索并附带来源引用。', score: .92 }] })}\n\n`)
     frames.push(`event: meta\ndata: ${JSON.stringify({ conversationId, validationPassed: true, validationReason: '知识库引用校验通过' })}\n\n`)
     frames.push(`event: done\ndata: ${JSON.stringify({ conversationId })}\n\n`)
     const encoder = new TextEncoder()
@@ -306,7 +281,7 @@ export const handlers = [
       startDate: url.searchParams.get('startDate') || undefined,
       endDate: url.searchParams.get('endDate') || undefined,
     }
-    return ok(queryTicketsByTenant(session.tenantId, query))
+    return ok(queryTickets(query))
   }),
 
   http.get('/api/tickets/:id', async ({ request, params }) => {
@@ -318,7 +293,7 @@ export const handlers = [
     if (!session) {
       return fail(401, 'token 无效')
     }
-    const ticket = getTicketDetailByTenant(session.tenantId, String(params.id))
+    const ticket = getTicketDetail(String(params.id))
     if (!ticket) {
       return fail(404, '工单不存在')
     }
@@ -338,7 +313,7 @@ export const handlers = [
     if (!payload.title || !payload.description) {
       return fail(400, '标题与描述为必填项')
     }
-    const created = createTicketByTenant(session.tenantId, session.username, payload)
+    const created = createTicket(session.username, payload)
     return ok(created, '工单创建成功')
   }),
 
@@ -352,7 +327,7 @@ export const handlers = [
       return fail(401, 'token 无效')
     }
     const payload = (await request.json()) as UpdateTicketDto
-    const updated = updateTicketByTenant(session.tenantId, String(params.id), session.username, payload)
+    const updated = updateTicket(String(params.id), session.username, payload)
     if (!updated) {
       return fail(404, '工单不存在')
     }
@@ -370,7 +345,7 @@ export const handlers = [
     }
     const payload = (await request.json()) as TicketActionDto
     try {
-      const updated = actionTicketByTenant(session.tenantId, String(params.id), session.username, payload)
+      const updated = actionTicket(String(params.id), session.username, payload)
       if (!updated) {
         return fail(404, '工单不存在')
       }
@@ -389,7 +364,7 @@ export const handlers = [
     if (!session) {
       return fail(401, 'token 无效')
     }
-    const comments = listTicketCommentsByTenant(session.tenantId, String(params.id))
+    const comments = listTicketComments(String(params.id))
     if (!comments) {
       return fail(404, '工单不存在')
     }
@@ -409,8 +384,7 @@ export const handlers = [
     if (!payload.content?.trim()) {
       return fail(400, '评论内容不能为空')
     }
-    const created = createTicketCommentByTenant(
-      session.tenantId,
+    const created = createTicketComment(
       String(params.id),
       session.username,
       payload
@@ -434,7 +408,7 @@ export const handlers = [
     if (!payload.filename) {
       return fail(400, '附件名称不能为空')
     }
-    const attachment = uploadTicketAttachmentByTenant(session.tenantId, String(params.id), payload)
+    const attachment = uploadTicketAttachment(String(params.id), payload)
     if (!attachment) {
       return fail(404, '工单不存在')
     }
@@ -456,7 +430,7 @@ export const handlers = [
       type: (url.searchParams.get('type') || undefined) as AssetListQueryDto['type'],
       keyword: url.searchParams.get('keyword') || undefined,
     }
-    return ok(queryAssetsByTenant(session.tenantId, query))
+    return ok(queryAssets(query))
   }),
 
   http.get('/api/assets/batch', async ({ request }) => {
@@ -471,7 +445,7 @@ export const handlers = [
       .split(',')
       .map((id) => id.trim())
       .filter(Boolean)
-    return ok(getAssetsByIdsByTenant(session.tenantId, ids))
+    return ok(getAssetsByIds(ids))
   }),
 
   http.get('/api/assets/:id', async ({ request, params }) => {
@@ -481,13 +455,13 @@ export const handlers = [
     if (!session) {
       return fail(401, 'token 无效')
     }
-    const asset = getAssetDetailByTenant(session.tenantId, String(params.id))
+    const asset = getAssetDetail(String(params.id))
     if (!asset) {
       return fail(404, '资产不存在')
     }
     const detail: AssetDetailDto = {
       ...asset,
-      relatedTickets: listRelatedTicketsByAsset(session.tenantId, asset.id),
+      relatedTickets: listRelatedTicketsByAsset(asset.id),
     }
     return ok(detail)
   }),
@@ -503,7 +477,7 @@ export const handlers = [
     if (!payload.name || !payload.spec) {
       return fail(400, '资产名称与规格为必填项')
     }
-    const asset = createAssetByTenant(session.tenantId, payload)
+    const asset = createAsset(payload)
     const detail: AssetDetailDto = {
       ...asset,
       relatedTickets: [],
@@ -519,13 +493,13 @@ export const handlers = [
       return fail(401, 'token 无效')
     }
     const payload = (await request.json()) as UpdateAssetDto
-    const updated = updateAssetByTenant(session.tenantId, String(params.id), payload)
+    const updated = updateAsset(String(params.id), payload)
     if (!updated) {
       return fail(404, '资产不存在')
     }
     const detail: AssetDetailDto = {
       ...updated,
-      relatedTickets: listRelatedTicketsByAsset(session.tenantId, updated.id),
+      relatedTickets: listRelatedTicketsByAsset(updated.id),
     }
     return ok(detail, '资产更新成功')
   }),
@@ -539,13 +513,13 @@ export const handlers = [
     }
     const payload = (await request.json()) as AssetActionDto
     try {
-      const updated = actionAssetByTenant(session.tenantId, String(params.id), session.username, payload)
+      const updated = actionAsset(String(params.id), session.username, payload)
       if (!updated) {
         return fail(404, '资产不存在')
       }
       const detail: AssetDetailDto = {
         ...updated,
-        relatedTickets: listRelatedTicketsByAsset(session.tenantId, updated.id),
+        relatedTickets: listRelatedTicketsByAsset(updated.id),
       }
       return ok(detail, '资产状态更新成功')
     } catch (error) {
@@ -564,14 +538,14 @@ export const handlers = [
       startDate: url.searchParams.get('startDate') || undefined,
       endDate: url.searchParams.get('endDate') || undefined,
     }
-    return ok(buildDashboardMetrics(session.tenantId, query.startDate, query.endDate))
+    return ok(buildDashboardMetrics(query.startDate, query.endDate))
   }),
 
   http.get('/api/kb/documents', async ({ request }) => {
     if (shouldPassthroughTicketBackend) return passthrough()
     const session=getSession(request); if(!session)return fail(401,'token 无效')
     const url=new URL(request.url),page=Number(url.searchParams.get('page')||1),pageSize=Number(url.searchParams.get('pageSize')||10),keyword=url.searchParams.get('keyword')||'',fileType=url.searchParams.get('fileType'),status=url.searchParams.get('status')
-    const filtered=mockDocuments.filter(item=>item.tenantId===session.tenantId&&(!keyword||`${item.title}${item.fileName}`.includes(keyword))&&(!fileType||item.fileType===fileType)&&(!status||item.status===status))
+    const filtered=mockDocuments.filter(item=>(!keyword||`${item.title}${item.fileName}`.includes(keyword))&&(!fileType||item.fileType===fileType)&&(!status||item.status===status))
     return ok({list:filtered.slice((page-1)*pageSize,page*pageSize),page,pageSize,total:filtered.length})
   }),
 
@@ -579,8 +553,8 @@ export const handlers = [
     if (shouldPassthroughTicketBackend) return passthrough()
     const session=getSession(request); if(!session)return fail(401,'token 无效')
     const form=await request.formData(),file=form.get('file') as File,title=String(form.get('title')||file.name),id=`mock-doc-${Date.now()}`,ext=(file.name.split('.').pop()||'md') as KbDocumentDto['fileType'],now=new Date().toISOString()
-    const document:KbDocumentDto={id,tenantId:session.tenantId,title,fileName:file.name,fileType:ext,fileSize:file.size,status:'PARSING',chunkCount:0,createdBy:session.username,createdAt:now,updatedAt:now};mockDocuments.unshift(document)
-    window.setTimeout(()=>{document.status='READY';document.chunkCount=1;document.updatedAt=new Date().toISOString();mockChunks[id]=[{id:`${id}-chunk`,documentId:id,tenantId:session.tenantId,chunkIndex:0,content:`${file.name} 的 Mock 解析内容`,vectorId:`${id}-vector`}]},800)
+    const document:KbDocumentDto={id,title,fileName:file.name,fileType:ext,fileSize:file.size,status:'PARSING',chunkCount:0,createdBy:session.username,createdAt:now,updatedAt:now};mockDocuments.unshift(document)
+    window.setTimeout(()=>{document.status='READY';document.chunkCount=1;document.updatedAt=new Date().toISOString();mockChunks[id]=[{id:`${id}-chunk`,documentId:id,chunkIndex:0,content:`${file.name} 的 Mock 解析内容`,vectorId:`${id}-vector`}]},800)
     return ok(document,'文件已上传，正在解析')
   }),
 
@@ -601,7 +575,7 @@ export const handlers = [
       keyword: url.searchParams.get('keyword') || undefined,
       tag: url.searchParams.get('tag') || undefined,
     }
-    return ok(queryKbListByTenant(session.tenantId, query))
+    return ok(queryKbList(query))
   }),
 
   http.get('/api/kb/:id/versions', async ({ request, params }) => {
@@ -610,7 +584,7 @@ export const handlers = [
     if (!session) {
       return fail(401, 'token 无效')
     }
-    const versions = getKbVersionsByTenant(session.tenantId, String(params.id))
+    const versions = getKbVersions(String(params.id))
     if (!versions) {
       return fail(404, '文章不存在')
     }
@@ -623,7 +597,7 @@ export const handlers = [
     if (!session) {
       return fail(401, 'token 无效')
     }
-    const detail = getKbDetailByTenant(session.tenantId, String(params.id))
+    const detail = getKbDetail(String(params.id))
     if (!detail) {
       return fail(404, '文章不存在')
     }
@@ -640,6 +614,6 @@ export const handlers = [
     if (!payload.title || !payload.content) {
       return fail(400, '标题和正文不能为空')
     }
-    return ok(saveKbByTenant(session.tenantId, session.username, payload), '保存成功')
+    return ok(saveKb(session.username, payload), '保存成功')
   }),
 ]

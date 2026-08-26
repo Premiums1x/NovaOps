@@ -1,7 +1,6 @@
-import type { RoleDto, TenantInfo, UserListItemDto, UserProfile } from '@/types/auth'
+import type { RoleDto, UserListItemDto, UserProfile } from '@/types/auth'
 import type { MenuDataDto, MenuItemDto } from '@/types/menu'
 
-type TenantId = 'tenant-a' | 'tenant-b'
 type MenuTemplateKey = 'full' | 'staff' | 'guest'
 
 interface MockUser {
@@ -16,13 +15,7 @@ interface MockUser {
 
 interface SessionPayload {
   username: string
-  tenantId: string
 }
-
-const tenantList: TenantInfo[] = [
-  { id: 'tenant-a', name: 'Tenant A' },
-  { id: 'tenant-b', name: 'Tenant B' },
-]
 
 const users: Record<string, MockUser> = {
   admin: {
@@ -107,73 +100,42 @@ export const verifyMockUser = (token: string): boolean => {
   return true
 }
 
-const permissionMap: Record<string, Record<TenantId, string[]>> = {
-  admin: {
-    'tenant-a': [
-      'dashboard:view',
-      'ticket:view',
-      'ticket:create',
-      'ticket:edit',
-      'ticket:assign',
-      'ticket:transfer',
-      'ticket:close',
-      'ticket:comment',
-      'ticket:advance',
-      'ticket:approve',
-      'ticket:reject',
-      'asset:view',
-      'asset:create',
-      'asset:edit',
-      'asset:claim',
-      'asset:scrap',
-      'kb:view',
-      'kb:edit',
-      'auth:user:manage',
-      'agent:chat',
-    ],
-    'tenant-b': [
-      'dashboard:view',
-      'ticket:view',
-      'ticket:create',
-      'ticket:edit',
-      'ticket:close',
-      'ticket:comment',
-      'ticket:advance',
-      'ticket:approve',
-      'ticket:reject',
-      'kb:view',
-      'asset:view',
-      'asset:create',
-      'asset:edit',
-      'asset:claim',
-      'asset:scrap',
-      'kb:edit',
-      'auth:user:manage',
-      'agent:chat',
-    ],
-  },
-  staff: {
-    'tenant-a': [
-      'dashboard:view',
-      'ticket:view',
-      'ticket:create',
-      'ticket:assign',
-      'ticket:comment',
-      'ticket:advance',
-      'asset:view',
-      'asset:claim',
-      'agent:chat',
-    ],
-    'tenant-b': ['dashboard:view', 'ticket:view', 'ticket:create', 'ticket:comment', 'ticket:advance', 'asset:view', 'agent:chat'],
-  },
-  guest: {
-    'tenant-a': ['dashboard:view','agent:chat'],
-    'tenant-b': ['dashboard:view','agent:chat'],
-  },
-  member: {
-    'tenant-a': ['dashboard:view', 'ticket:create', 'agent:chat'],
-    'tenant-b': ['dashboard:view', 'ticket:create', 'agent:chat'],
-  },
+const permissionMap: Record<string, string[]> = {
+  admin: [
+    'dashboard:view',
+    'ticket:view',
+    'ticket:create',
+    'ticket:edit',
+    'ticket:assign',
+    'ticket:transfer',
+    'ticket:close',
+    'ticket:comment',
+    'ticket:advance',
+    'ticket:approve',
+    'ticket:reject',
+    'asset:view',
+    'asset:create',
+    'asset:edit',
+    'asset:claim',
+    'asset:scrap',
+    'kb:view',
+    'kb:edit',
+    'auth:user:manage',
+    'agent:chat',
+  ],
+  staff: [
+    'dashboard:view',
+    'ticket:view',
+    'ticket:create',
+    'ticket:assign',
+    'ticket:comment',
+    'ticket:advance',
+    'asset:view',
+    'asset:claim',
+    'agent:chat',
+  ],
+  guest: ['dashboard:view', 'agent:chat'],
+  member: ['dashboard:view', 'ticket:create', 'agent:chat'],
 }
 
 const menuTemplates: Record<MenuTemplateKey, MenuItemDto[]> = {
@@ -296,13 +258,9 @@ const accessTokenTable = new Map<string, SessionPayload>()
 const refreshTokenTable = new Map<string, SessionPayload>()
 
 const createToken = (prefix: 'at' | 'rt', payload: SessionPayload) => {
-  return `${prefix}_${payload.username}_${payload.tenantId}_${Date.now()}_${Math.random()
+  return `${prefix}_${payload.username}_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 8)}`
-}
-
-const normalizeTenantId = (tenantId: string) => {
-  return tenantList.some((item) => item.id === tenantId) ? (tenantId as TenantId) : 'tenant-a'
 }
 
 const decodeBase64Url = (value: string) => {
@@ -320,16 +278,12 @@ const parseJwtSession = (token: string): SessionPayload | null => {
   try {
     const payload = JSON.parse(decodeBase64Url(parts[1] || '')) as {
       username?: string
-      tenantId?: string
     }
     const username = payload.username
     if (!username) {
       return null
     }
-    return {
-      username,
-      tenantId: normalizeTenantId(payload.tenantId || 'tenant-a'),
-    }
+    return { username }
   } catch {
     return null
   }
@@ -385,16 +339,14 @@ export const setMockUserPassword = (id: string, password: string) => {
 }
 
 export const buildSession = (payload: SessionPayload) => {
-  const normalizedPayload = { ...payload, tenantId: normalizeTenantId(payload.tenantId) }
-  const accessToken = createToken('at', normalizedPayload)
-  const refreshToken = createToken('rt', normalizedPayload)
-  accessTokenTable.set(accessToken, normalizedPayload)
-  refreshTokenTable.set(refreshToken, normalizedPayload)
+  const accessToken = createToken('at', payload)
+  const refreshToken = createToken('rt', payload)
+  accessTokenTable.set(accessToken, payload)
+  refreshTokenTable.set(refreshToken, payload)
   return {
     accessToken,
     refreshToken,
     expiresIn: 1800,
-    tenantId: normalizedPayload.tenantId,
   }
 }
 
@@ -409,7 +361,6 @@ export const refreshSession = (refreshToken: string) => {
     accessToken,
     refreshToken,
     expiresIn: 1800,
-    tenantId: payload.tenantId,
   }
 }
 
@@ -427,33 +378,29 @@ export const getSessionFromAccessToken = (authorization: string | null) => {
 
 // 按「用户名 → 角色码」的优先级取权限表；未知角色兜底为空权限，
 // 绝不能兜底 admin——否则脏数据会凭空获得管理员权限
-const resolvePermissions = (username: string, roleCode: string, tenantId: TenantId): string[] =>
-  permissionMap[username]?.[tenantId] ?? permissionMap[roleCode]?.[tenantId] ?? []
+const resolvePermissions = (username: string, roleCode: string): string[] =>
+  permissionMap[username] ?? permissionMap[roleCode] ?? []
 
-export const buildUserProfile = (username: string, tenantId: string): UserProfile => {
-  const currentTenantId = normalizeTenantId(tenantId)
+export const buildUserProfile = (username: string): UserProfile => {
   const user = users[username] || dynamicUsers.get(username)
   if (!user) {
     throw new Error(`User not found: ${username}`)
   }
   const roleCode = user.roles[0] || 'guest'
-  const perms = resolvePermissions(username, roleCode, currentTenantId)
+  const perms = resolvePermissions(username, roleCode)
   return {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
     roles: user.roles,
     permissions: perms,
-    tenantId: currentTenantId,
-    tenants: tenantList,
   }
 }
 
-export const buildMenuData = (username: string, tenantId: string): MenuDataDto => {
-  const currentTenantId = normalizeTenantId(tenantId)
+export const buildMenuData = (username: string): MenuDataDto => {
   const user = users[username] || dynamicUsers.get(username)
   const roleCode = user?.roles?.[0] || 'guest'
-  const perms = resolvePermissions(username, roleCode, currentTenantId)
+  const perms = resolvePermissions(username, roleCode)
   return {
     menus: resolveMenusByUser(username),
     permissions: perms,
