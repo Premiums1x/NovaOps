@@ -4,20 +4,11 @@ import java.util.List;
 
 public class TicketDetailResponse extends TicketListItemResponse {
 
-  private String tenantId;
   private String description;
   private String dueDate;
   private List<TicketTimelineItemResponse> timeline;
   private List<TicketCommentResponse> comments;
   private List<TicketAttachmentResponse> attachments;
-
-  public String getTenantId() {
-    return tenantId;
-  }
-
-  public void setTenantId(String tenantId) {
-    this.tenantId = tenantId;
-  }
 
   public String getDescription() {
     return description;

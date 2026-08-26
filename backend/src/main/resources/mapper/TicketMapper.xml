@@ -5,7 +5,7 @@
 <mapper namespace="com.novaops.backend.ticket.mapper.TicketMapper">
 
   <sql id="ticketFilters">
-    where tenant_id = #{tenantId}
+    where 1 = 1
     <if test="status != null and status != ''">
       and status = #{status}
     </if>
@@ -34,31 +34,23 @@
   </select>
 
   <select id="queryTickets" resultType="com.novaops.backend.ticket.model.TicketRecord">
-    select id, tenant_id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at
+    select id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at
     from biz_ticket
     <include refid="ticketFilters" />
     order by updated_at desc
     limit #{limit} offset #{offset}
   </select>
 
-  <select id="countTicketsByTenant" resultType="long">
-    select count(1)
-    from biz_ticket
-    where tenant_id = #{tenantId}
-  </select>
-
   <select id="findTicket" resultType="com.novaops.backend.ticket.model.TicketRecord">
-    select id, tenant_id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at
+    select id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at
     from biz_ticket
-    where tenant_id = #{tenantId}
-      and id = #{ticketId}
+    where id = #{ticketId}
     limit 1
   </select>
 
   <insert id="insertTicket" parameterType="com.novaops.backend.ticket.model.TicketRecord">
     insert into biz_ticket (
       id,
-      tenant_id,
       title,
       description,
       status,
@@ -70,7 +62,6 @@
       updated_at
     ) values (
       #{id},
-      #{tenantId},
       #{title},
       #{description},
       #{status},
@@ -94,7 +85,6 @@
         due_date = #{dueDate},
         updated_at = #{updatedAt}
     where id = #{id}
-      and tenant_id = #{tenantId}
   </update>
 
   <delete id="deleteAssetRelations">
