@@ -253,7 +253,20 @@ export const handlers = [
     const conversationId = payload.conversationId || `mock-conv-${Date.now()}`
     if (!payload.conversationId) mockConversations.unshift({ id: conversationId, userId: session.username, title: payload.content.slice(0, 40), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
     const answer = '根据知识库资料，NovaOps 会基于企业知识库文档提供带引用的回答。[1]'
-    const frames = [...answer.matchAll(/.{1,12}/gu)].map((match) => `event: delta\ndata: ${JSON.stringify({ conversationId, content: match[0] })}\n\n`)
+    const frames = [
+      `event: plan\ndata: ${JSON.stringify({ conversationId, steps: [
+        { action: 'search_kb', label: '检索知识库', query: payload.content, reason: '定位与问题相关的知识库资料', status: 'pending' },
+        { action: 'answer', label: '生成回答', reason: '依据检索结果组织带引用的回答', status: 'pending' },
+        { action: 'validate', label: '校验引用', reason: '核对引用编号与知识库资料是否一致', status: 'pending' },
+      ] })}\n\n`,
+      `event: step\ndata: ${JSON.stringify({ conversationId, action: 'search_kb', status: 'running' })}\n\n`,
+      `event: step\ndata: ${JSON.stringify({ conversationId, action: 'search_kb', status: 'done', payload: { count: 1, topChunks: [{ documentName: 'NovaOps 使用手册', score: .92 }] } })}\n\n`,
+      `event: step\ndata: ${JSON.stringify({ conversationId, action: 'answer', status: 'running' })}\n\n`,
+      ...[...answer.matchAll(/.{1,12}/gu)].map((match) => `event: delta\ndata: ${JSON.stringify({ conversationId, content: match[0] })}\n\n`),
+      `event: step\ndata: ${JSON.stringify({ conversationId, action: 'answer', status: 'done', payload: { characterCount: answer.length } })}\n\n`,
+      `event: step\ndata: ${JSON.stringify({ conversationId, action: 'validate', status: 'running' })}\n\n`,
+      `event: step\ndata: ${JSON.stringify({ conversationId, action: 'validate', status: 'done', payload: { passed: true, reason: '知识库引用校验通过' } })}\n\n`,
+    ]
     frames.push(`event: citation\ndata: ${JSON.stringify({ conversationId, citations: [{ index: 1, documentId: 'mock-doc-1', documentName: 'NovaOps 使用手册', chunkId: 'chunk-2', content: '知识库文档支持 RAG 检索并附带来源引用。', score: .92 }] })}\n\n`)
     frames.push(`event: meta\ndata: ${JSON.stringify({ conversationId, validationPassed: true, validationReason: '知识库引用校验通过' })}\n\n`)
     frames.push(`event: done\ndata: ${JSON.stringify({ conversationId })}\n\n`)

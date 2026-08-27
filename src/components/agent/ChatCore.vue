@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, ref } from 'vue'
 import { RobotOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { BubbleList, Welcome, XSender } from 'vue-element-plus-x'
 import type { BubbleListItemProps } from 'vue-element-plus-x/types/BubbleList'
-import type { CitationDto } from '@/types/agent'
+import type { AgentPlanStepDto, CitationDto } from '@/types/agent'
 import { useChat } from '@/composables/useChat'
 
 type ChatBubble = BubbleListItemProps & {
@@ -12,6 +12,8 @@ type ChatBubble = BubbleListItemProps & {
   content: string
   citations?: CitationDto[]
   validationPassed?: boolean
+  steps?: AgentPlanStepDto[]
+  reasoningExpanded?: boolean
 }
 
 const { store, send, stop } = useChat()
@@ -43,6 +45,36 @@ const submit = async () => {
 const askSuggestion = async (question: string) => {
   if (store.loading) return
   await send(question)
+}
+
+const stepDescription = (step: AgentPlanStepDto) => {
+  const payload = step.payload || {}
+  const query = step.action === 'search_kb' && step.query ? `检索词：${step.query}` : ''
+  let result = ''
+  if (step.action === 'search_kb' && typeof payload.count === 'number') result = `检索到 ${payload.count} 条资料`
+  if (step.action === 'answer' && typeof payload.characterCount === 'number') result = `已生成 ${payload.characterCount} 字`
+  if (step.action === 'validate' && typeof payload.passed === 'boolean') {
+    result = payload.passed ? '引用校验通过' : '引用校验未通过'
+  }
+  if (step.status === 'failed' && typeof payload.message === 'string') result = payload.message
+  return [step.reason, query, result].filter(Boolean).join(' · ')
+}
+
+const stepItems = (steps: AgentPlanStepDto[]) => steps.map((step) => ({
+  key: step.action,
+  title: step.label,
+  description: stepDescription(step),
+  status: step.status === 'running' ? 'process' : step.status === 'done' ? 'finish' : step.status === 'failed' ? 'error' : 'wait',
+}))
+
+const progressLabel = (steps: AgentPlanStepDto[]) => {
+  const completed = steps.filter((step) => step.status === 'done').length
+  return `执行过程 · ${completed}/${steps.length}`
+}
+
+const toggleReasoning = (key: string, activeKey: string|string[]) => {
+  const message = store.messages.find((item) => item.id === key)
+  if (message) message.reasoningExpanded = Array.isArray(activeKey) ? activeKey.includes('reasoning') : activeKey === 'reasoning'
 }
 </script>
 
@@ -78,7 +110,23 @@ const askSuggestion = async (question: string) => {
         </template>
         <template #content="{ item }">
           <div v-if="item.role === 'user'" class="user-message">{{ item.content }}</div>
-          <Preview v-else-if="item.content" :editor-id="String(item.key)" :model-value="item.content" />
+          <div v-else class="assistant-message">
+            <a-collapse
+              v-if="item.steps?.length"
+              class="reasoning-panel"
+              ghost
+              :active-key="item.reasoningExpanded ? ['reasoning'] : []"
+              @change="toggleReasoning(String(item.key), $event)"
+            >
+              <a-collapse-panel key="reasoning">
+                <template #header>
+                  <span class="reasoning-title">{{ progressLabel(item.steps) }}</span>
+                </template>
+                <a-steps direction="vertical" size="small" :items="stepItems(item.steps)" />
+              </a-collapse-panel>
+            </a-collapse>
+            <Preview v-if="item.content" :editor-id="String(item.key)" :model-value="item.content" />
+          </div>
         </template>
         <template #footer="{ item }">
           <div v-if="item.role === 'assistant'" class="answer-footer">
@@ -128,6 +176,12 @@ const askSuggestion = async (question: string) => {
 .message-avatar{display:grid;width:34px;height:34px;place-items:center;border:1px solid var(--nova-border);border-radius:10px;background:var(--nova-surface-elevated);color:var(--nova-primary);box-shadow:0 4px 12px rgba(15,23,42,.08)}
 .message-avatar.user{border-color:transparent;background:var(--nova-primary);color:#fff}
 .user-message{color:inherit;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.assistant-message{display:grid;gap:10px;min-width:0}
+.reasoning-panel{border:1px solid color-mix(in srgb,var(--nova-primary) 18%,var(--nova-border));border-radius:10px;background:color-mix(in srgb,var(--nova-primary) 4%,var(--nova-surface-elevated))}
+.reasoning-panel :deep(.ant-collapse-header){min-height:44px;align-items:center!important;padding:8px 12px!important}
+.reasoning-panel :deep(.ant-collapse-content-box){padding:0 14px 8px 34px!important}
+.reasoning-panel :deep(.ant-steps-item-description){max-width:none!important;color:var(--nova-text-secondary)!important;font-size:12px}
+.reasoning-title{color:var(--nova-text-secondary);font-size:13px;font-weight:600;letter-spacing:.01em}
 .bubble-list :deep(.elx-bubble--end){--elx-bubble-bg:var(--nova-primary);--elx-bubble-text-color:#fff}
 .bubble-list :deep(.elx-bubble--start){--elx-bubble-bg:var(--nova-surface-elevated);--elx-bubble-text-color:var(--nova-text);--elx-bubble-border-color:var(--nova-border)}
 .bubble-list :deep(.elx-bubble--start .elx-bubble__content){border:1px solid var(--nova-border);box-shadow:0 4px 14px rgba(15,23,42,.04)}
