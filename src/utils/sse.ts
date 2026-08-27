@@ -3,7 +3,7 @@ import type { AgentSseEvent } from '@/types/agent'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
-const KNOWN_EVENTS: AgentSseEvent[] = ['delta', 'citation', 'meta', 'done', 'error']
+const KNOWN_EVENTS: AgentSseEvent[] = ['plan', 'step', 'delta', 'citation', 'meta', 'done', 'error']
 
 const parseFrame = (frame: string) => {
   let event = 'message'
@@ -38,6 +38,18 @@ export const streamSse = async (
   }
   if (!response.ok || !response.body) {
     throw new Error(response.status === 401 ? '登录状态已失效' : '问答服务连接失败')
+  }
+  const contentType = response.headers.get('Content-Type')?.toLowerCase() || ''
+  if (!contentType.includes('text/event-stream')) {
+    const raw = await response.text()
+    let message = '问答服务返回了无法识别的响应'
+    try {
+      const payload = JSON.parse(raw) as { message?: unknown }
+      if (typeof payload.message === 'string' && payload.message.trim()) message = payload.message
+    } catch {
+      // 非 JSON 响应使用统一提示，避免把网关 HTML 直接展示给用户
+    }
+    throw new Error(message)
   }
 
   const reader = response.body.getReader()
