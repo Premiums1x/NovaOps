@@ -64,8 +64,7 @@ app:
   kb:
     storage-path: ${NOVAOPS_KB_STORAGE:./data/kb}
     max-file-size-bytes: ${NOVAOPS_KB_MAX_FILE_BYTES:31457280}
-    chunk-size: ${NOVAOPS_KB_CHUNK_SIZE:2400}
-    chunk-overlap: ${NOVAOPS_KB_CHUNK_OVERLAP:300}
+    chunk-tokens: ${NOVAOPS_KB_CHUNK_TOKENS:600}
     default-top-k: ${NOVAOPS_KB_TOP_K:5}
     default-min-score: ${NOVAOPS_KB_MIN_SCORE:0.55}
     qdrant-base-url: ${QDRANT_BASE_URL:http://localhost:6333}

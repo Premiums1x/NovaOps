@@ -6,6 +6,7 @@ import com.novaops.backend.kb.model.KbChunkRecord;
 import com.novaops.backend.kb.model.KbDocumentRecord;
 import java.io.BufferedInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -14,7 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
-import org.apache.tika.sax.BodyContentHandler;
+import org.apache.tika.sax.ToXMLContentHandler;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -35,8 +36,8 @@ public class KbIngestionService {
   public void process(KbDocumentRecord source) {
     List<String> vectorIds = new ArrayList<>();
     try (InputStream input = Files.newInputStream(Path.of(source.getStoragePath()))) {
-      String text = parseWithTika(input);
-      List<String> chunks = chunker.split(text);
+      StructuredTextParser.Result parsed = "md".equals(source.getFileType()) ? parseMarkdown(input) : parseWithTika(input);
+      List<String> chunks = chunker.split(parsed.blocks(), parsed.plainText());
       if (chunks.isEmpty()) {
         throw new IllegalStateException("文档未解析出有效文本");
       }
@@ -73,16 +74,26 @@ public class KbIngestionService {
     }
   }
 
-  private String parseWithTika(InputStream input) {
-    // BodyContentHandler(-1) 取消 Tika 默认的 10 万字符截断上限，否则大文档后半部分会静默丢失
-    BodyContentHandler handler = new BodyContentHandler(-1);
+  /** md 文件走原生 Markdown 解析:Tika 标准包无 markdown 解析器,交给它只会退化为纯文本。 */
+  private StructuredTextParser.Result parseMarkdown(InputStream input) {
+    try {
+      return StructuredTextParser.parseMarkdown(new String(input.readAllBytes(), StandardCharsets.UTF_8));
+    } catch (Exception ex) {
+      throw new IllegalStateException("文档解析失败: " + ex.getMessage(), ex);
+    }
+  }
+
+  private StructuredTextParser.Result parseWithTika(InputStream input) {
+    // ToXMLContentHandler 保留标题/段落/代码等 XHTML 结构供结构化切片使用,
+    // 且不像 BodyContentHandler 那样有 10 万字符截断上限,大文档不会静默丢内容
+    ToXMLContentHandler handler = new ToXMLContentHandler();
     AutoDetectParser parser = new AutoDetectParser();
     Metadata metadata = new Metadata();
     try {
       parser.parse(new BufferedInputStream(input), handler, metadata);
-      return handler.toString();
     } catch (Exception ex) {
       throw new IllegalStateException("文档解析失败: " + ex.getMessage(), ex);
     }
+    return StructuredTextParser.parse(handler.toString());
   }
 }
