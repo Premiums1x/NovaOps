@@ -196,6 +196,22 @@ Vite 会将 `/api` 代理到 `http://127.0.0.1:8080`。
 - `GET /api/agent/conversations`
 - `GET /api/agent/conversations/{id}`
 
+Agent 对话会先生成一份可公开展示的 JSON 行动计划，再执行真实的 RAG 流水线。规划调用失败或输出格式不合法时自动回退为固定的“检索知识库 → 生成回答 → 校验引用”计划，不会阻断回答。可通过 `NOVAOPS_AGENT_PLAN_ENABLED=false` 关闭额外规划调用。
+
+`POST /api/agent/chat` 的 SSE 事件如下：
+
+| 事件 | 用途 |
+| --- | --- |
+| `plan` | 一次性下发 `steps`，包含 `action/label/query/reason/status` |
+| `step` | 按 `action` 更新执行状态：`running/done/failed`，结果摘要放在 `payload` |
+| `delta` | 回答正文增量 |
+| `citation` | 知识库引用列表 |
+| `meta` | 引用校验结果与耗时 |
+| `done` | 本轮正常完成 |
+| `error` | 本轮失败；包括建会话等流建立前的同步异常 |
+
+该接口必须返回 `text/event-stream`。前端发现 HTTP 200 携带普通 JSON 错误体时，会读取其中的 `message` 并显示错误，不再产生空白 AI 气泡。
+
 ### 工单
 
 - `GET/POST /api/tickets`

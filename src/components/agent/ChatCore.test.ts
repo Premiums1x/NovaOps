@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatCore from './ChatCore.vue'
 
 const store = reactive({
-  messages: [] as Array<{ id: string; role: 'user' | 'assistant'; content: string }>,
+  messages: [] as Array<Record<string, unknown>>,
   loading: false,
 })
 
@@ -62,5 +62,42 @@ describe('ChatCore', () => {
     expect(userMessage.find('.markdown-preview').exists()).toBe(false)
     expect(wrapper.get('.message.assistant').get('.md-preview-component').text()).toBe('这是 **Markdown** 回复')
     expect(wrapper.find('.x-sender-stub').exists()).toBe(true)
+  })
+
+  it('renders a collapsible execution summary for assistant plan steps', async () => {
+    store.messages = [
+      {
+        id: 'assistant-plan',
+        role: 'assistant',
+        content: '回答内容',
+        reasoningExpanded: true,
+        steps: [
+          { action: 'search_kb', label: '检索知识库', reason: '查找资料', status: 'done', payload: { count: 3 } },
+          { action: 'answer', label: '生成回答', reason: '组织答案', status: 'running' },
+        ],
+      },
+    ]
+    const wrapper = mount(ChatCore, {
+      global: {
+        stubs: {
+          'a-collapse': { template: '<div class="collapse-stub"><slot /></div>' },
+          'a-collapse-panel': { template: '<div><slot name="header"/><slot /></div>' },
+          'a-steps': {
+            props: ['items'],
+            template: '<div class="steps-stub"><div v-for="item in items" :key="item.key">{{ item.title }} {{ item.description }}</div></div>',
+          },
+          'a-tag': true,
+          'a-alert': true,
+          UserOutlined: true,
+          RobotOutlined: true,
+        },
+      },
+    })
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(wrapper.get('.reasoning-panel').text()).toContain('执行过程')
+    expect(wrapper.get('.steps-stub').text()).toContain('检索知识库')
+    expect(wrapper.get('.steps-stub').text()).toContain('检索到 3 条资料')
   })
 })
