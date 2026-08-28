@@ -111,7 +111,7 @@ describe('ticket pages person contract', () => {
       assignForm: { assigneeId: string; remark: string }
       submitAssign: () => Promise<void>
     }
-    vm.openAssignModal(ticket)
+    vm.openAssignModal({ ...ticket, status: 'pending' })
     vm.assignForm.assigneeId = 'u-jerry'
     await vm.submitAssign()
 
@@ -142,5 +142,91 @@ describe('ticket pages person contract', () => {
       assigneeId: 'u-jerry',
       remark: '轮班转派',
     })
+  })
+
+  it('shows review actions and submits approve instead of advance for a ticket under review', async () => {
+    vi.mocked(getTicketDetailApi).mockResolvedValue({ ...ticket, status: 'review' })
+    const wrapper = await mountPage('/ticket/detail/:id', TicketDetail)
+    await flushPromises()
+
+    const buttonLabels = wrapper
+      .findAll('button')
+      .map((button) => button.text().replace(/\s/g, ''))
+    expect(buttonLabels).toContain('复核通过')
+    expect(buttonLabels).toContain('驳回')
+    expect(buttonLabels).not.toContain('提交复核')
+    expect(buttonLabels).not.toContain('指派')
+
+    const approveButton = wrapper.findAll('button').find((button) => button.text() === '复核通过')
+    expect(approveButton).toBeDefined()
+    await approveButton!.trigger('click')
+    await flushPromises()
+
+    expect(ticketActionApi).toHaveBeenCalledWith(ticket.id, {
+      action: 'approve',
+      assigneeId: undefined,
+      remark: undefined,
+    })
+  })
+
+  it('shows only the state-machine actions allowed for a processing ticket', async () => {
+    const wrapper = await mountPage('/ticket/detail/:id', TicketDetail)
+    await flushPromises()
+
+    const buttonLabels = wrapper
+      .findAll('button')
+      .map((button) => button.text().replace(/\s/g, ''))
+    expect(buttonLabels).toContain('提交复核')
+    expect(buttonLabels).toContain('转派')
+    expect(buttonLabels).toContain('关闭')
+    expect(buttonLabels).not.toContain('指派')
+    expect(buttonLabels).not.toContain('复核通过')
+    expect(buttonLabels).not.toContain('驳回')
+  })
+
+  it('does not submit an action that is illegal for the current ticket status', async () => {
+    vi.mocked(getTicketDetailApi).mockResolvedValue({ ...ticket, status: 'review' })
+    const wrapper = await mountPage('/ticket/detail/:id', TicketDetail)
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      doAction: (action: 'advance') => Promise<void>
+    }
+    await vm.doAction('advance')
+
+    expect(ticketActionApi).not.toHaveBeenCalled()
+  })
+
+  it('shows list actions only for statuses accepted by the backend state machine', async () => {
+    const statuses = ['pending', 'processing', 'review', 'done'] as const
+    vi.mocked(getTicketListApi).mockResolvedValue({
+      list: statuses.map((status, index) => ({
+        ...ticket,
+        id: `A-TICKET-000${index + 1}`,
+        status,
+      })),
+      page: 1,
+      pageSize: 10,
+      total: statuses.length,
+    })
+    const wrapper = await mountPage('/ticket/list', TicketList)
+    await flushPromises()
+
+    const rowButtons = (id: string) => {
+      const row = wrapper.findAll('tbody tr').find((item) => item.text().includes(id))
+      expect(row).toBeDefined()
+      return row!
+        .findAll('button')
+        .map((button) => button.text().replace(/\s/g, ''))
+    }
+
+    expect(rowButtons('A-TICKET-0001')).toEqual(expect.arrayContaining(['指派']))
+    expect(rowButtons('A-TICKET-0001')).not.toEqual(expect.arrayContaining(['关闭']))
+    expect(rowButtons('A-TICKET-0002')).not.toEqual(expect.arrayContaining(['指派']))
+    expect(rowButtons('A-TICKET-0002')).toEqual(expect.arrayContaining(['关闭']))
+    expect(rowButtons('A-TICKET-0003')).not.toEqual(expect.arrayContaining(['指派']))
+    expect(rowButtons('A-TICKET-0003')).toEqual(expect.arrayContaining(['关闭']))
+    expect(rowButtons('A-TICKET-0004')).not.toEqual(expect.arrayContaining(['指派']))
+    expect(rowButtons('A-TICKET-0004')).not.toEqual(expect.arrayContaining(['关闭']))
   })
 })
