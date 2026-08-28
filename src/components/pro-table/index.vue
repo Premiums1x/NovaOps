@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { TableProps } from 'ant-design-vue'
 
-//一个对象，key 都是 string，value 都是 unknown
 type RowData = Record<string, unknown>
 
 const props = withDefaults(
@@ -13,31 +12,29 @@ const props = withDefaults(
     pageSize: number
     total: number
     rowKey?: string | ((record: RowData) => string)
+    scroll?: TableProps['scroll']
+    headerTitle?: string
   }>(),
   {
     loading: false,
     rowKey: 'id',
+    scroll: () => ({ x: 'max-content' }),
+    headerTitle: '',
   }
 )
 
-//函数签名
 const emit = defineEmits<{
-  //e 是参数名，'update:page' 是它的类型——字面量类型，
-  // 表示这个参数只能传这个固定字符串，不能传别的。
   (e: 'update:page', value: number): void
   (e: 'update:page-size', value: number): void
 }>()
 
 const handlePageChange = (page: number, pageSize: number) => {
   emit('update:page', page)
-  //判断：用户这次操作有没有改变每页条数
-  //变了才 emit，没变就不发事件，避免无意义的更新。
   if (pageSize !== props.pageSize) {
     emit('update:page-size', pageSize)
   }
 }
 
-//改变每页条数时触发
 const handlePageSizeChange = (_current: number, pageSize: number) => {
   emit('update:page-size', pageSize)
   emit('update:page', 1)
@@ -45,24 +42,34 @@ const handlePageSizeChange = (_current: number, pageSize: number) => {
 </script>
 
 <template>
-  <!-- slot插槽：具体放什么筛选条件和按钮由父组件自己决定 -->
   <section class="pro-table">
-    <div class="pro-table-toolbar">
-      <div class="pro-table-filters">
-        <slot name="filters" />
-      </div>
-      <div class="pro-table-actions">
-        <slot name="actions" />
-      </div>
-    </div>
+    <!-- 上层：独立筛选卡片（仅当传入 filters 插槽时渲染） -->
+    <a-card v-if="$slots.filters" :bordered="false" class="pro-table-search-card">
+      <slot name="filters" />
+    </a-card>
 
+    <!-- 下层：表格数据卡片 -->
     <a-card :bordered="false" class="pro-table-card">
+      <!-- 表格上方工具栏：左侧标题/统计，右侧操作按钮组 -->
+      <div v-if="props.headerTitle || $slots.headerTitle || $slots.actions" class="pro-table-header">
+        <div class="pro-table-title">
+          <slot name="headerTitle">
+            <span v-if="props.headerTitle" class="title-text">{{ props.headerTitle }}</span>
+          </slot>
+        </div>
+        <div v-if="$slots.actions" class="pro-table-actions">
+          <slot name="actions" />
+        </div>
+      </div>
+
+      <!-- 数据表格 -->
       <a-table
         :columns="props.columns"
         :data-source="props.dataSource"
         :loading="props.loading"
         :row-key="props.rowKey"
         :pagination="false"
+        :scroll="props.scroll"
         size="middle"
       >
         <template #bodyCell="slotProps">
@@ -75,6 +82,7 @@ const handlePageSizeChange = (_current: number, pageSize: number) => {
         </template>
       </a-table>
 
+      <!-- 底部统计与分页 -->
       <div class="pro-table-pagination">
         <a-pagination
           :current="props.page"
@@ -92,29 +100,47 @@ const handlePageSizeChange = (_current: number, pageSize: number) => {
 
 <style scoped>
 .pro-table {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.pro-table-toolbar {
+.pro-table-search-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.pro-table-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.pro-table-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
   gap: 12px;
-  align-items: flex-start;
+  flex-wrap: wrap;
 }
 
-.pro-table-filters {
-  flex: 1;
+.pro-table-title {
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2329;
+}
+
+.title-text {
+  line-height: 1.5;
 }
 
 .pro-table-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
   flex-wrap: wrap;
-}
-
-.pro-table-card {
-  border-radius: 10px;
 }
 
 .pro-table-pagination {
