@@ -8,8 +8,10 @@ public class TicketListItemResponse {
   private String title;
   private String status;
   private String priority;
-  private String assignee;
-  private String creator;
+  private String assigneeId;
+  private String assigneeName;
+  private String creatorId;
+  private String creatorName;
   private String createdAt;
   private String updatedAt;
   private List<String> assetIds;
@@ -46,20 +48,36 @@ public class TicketListItemResponse {
     this.priority = priority;
   }
 
-  public String getAssignee() {
-    return assignee;
+  public String getAssigneeId() {
+    return assigneeId;
   }
 
-  public void setAssignee(String assignee) {
-    this.assignee = assignee;
+  public void setAssigneeId(String assigneeId) {
+    this.assigneeId = assigneeId;
   }
 
-  public String getCreator() {
-    return creator;
+  public String getAssigneeName() {
+    return assigneeName;
   }
 
-  public void setCreator(String creator) {
-    this.creator = creator;
+  public void setAssigneeName(String assigneeName) {
+    this.assigneeName = assigneeName;
+  }
+
+  public String getCreatorId() {
+    return creatorId;
+  }
+
+  public void setCreatorId(String creatorId) {
+    this.creatorId = creatorId;
+  }
+
+  public String getCreatorName() {
+    return creatorName;
+  }
+
+  public void setCreatorName(String creatorName) {
+    this.creatorName = creatorName;
   }
 
   public String getCreatedAt() {

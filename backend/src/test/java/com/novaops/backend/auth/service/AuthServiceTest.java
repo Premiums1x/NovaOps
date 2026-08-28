@@ -16,7 +16,6 @@ import com.novaops.backend.auth.dto.RegisterRequest;
 import com.novaops.backend.auth.dto.RegisterResponse;
 import com.novaops.backend.auth.dto.RoleResponse;
 import com.novaops.backend.auth.dto.UserOptionResponse;
-import com.novaops.backend.auth.controller.AuthController;
 import com.novaops.backend.auth.mail.EmailSender;
 import com.novaops.backend.auth.mapper.AuthMapper;
 import com.novaops.backend.auth.model.RefreshTokenRecord;
@@ -25,7 +24,6 @@ import com.novaops.backend.common.config.SecurityProperties;
 import com.novaops.backend.common.exception.BusinessException;
 import com.novaops.backend.common.security.CurrentSession;
 import com.novaops.backend.common.security.JwtService;
-import com.novaops.backend.common.security.RequirePermission;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -128,22 +126,30 @@ class AuthServiceTest {
   }
 
   @Test
+  void requireAnyPermissionDeniesWhenNoRequestedCodeIsGranted() {
+    when(authMapper.listPermissions("u-staff")).thenReturn(List.of("ticket:view"));
+
+    assertThatThrownBy(() -> authService.requireAnyPermission(
+        session(), "ticket:create", "ticket:assign", "ticket:transfer", "asset:claim"))
+        .isInstanceOf(BusinessException.class)
+        .hasMessageContaining("无权限");
+  }
+
+  @Test
+  void requireAnyPermissionAllowsOneGrantedCode() {
+    when(authMapper.listPermissions("u-staff")).thenReturn(List.of("ticket:view", "ticket:transfer"));
+
+    authService.requireAnyPermission(
+        session(), "ticket:create", "ticket:assign", "ticket:transfer", "asset:claim");
+  }
+
+  @Test
   void listUserOptionsReturnsOnlyMapperProvidedEnabledUsers() {
     UserOptionResponse staff = new UserOptionResponse("u-staff", "staff", "Support Staff");
     when(authMapper.listEnabledUserOptions()).thenReturn(List.of(staff));
 
     assertThat(authService.listUserOptions()).containsExactly(staff);
     verify(authMapper).listEnabledUserOptions();
-  }
-
-  @Test
-  void userOptionsEndpointRequiresAssetClaimPermission() throws NoSuchMethodException {
-    RequirePermission permission = AuthController.class
-        .getMethod("userOptions")
-        .getAnnotation(RequirePermission.class);
-
-    assertThat(permission).isNotNull();
-    assertThat(permission.value()).isEqualTo("asset:claim");
   }
 
   @Test

@@ -45,6 +45,33 @@ const users: Record<string, MockUser> = {
     enabled: true,
     createdAt: '2026-04-03T08:00:00Z',
   },
+  tom: {
+    id: 'u-tom',
+    username: 'tom',
+    password: '123456',
+    displayName: 'Tom',
+    roles: ['staff'],
+    enabled: true,
+    createdAt: '2026-04-04T08:00:00Z',
+  },
+  jerry: {
+    id: 'u-jerry',
+    username: 'jerry',
+    password: '123456',
+    displayName: 'Jerry',
+    roles: ['staff'],
+    enabled: true,
+    createdAt: '2026-04-05T08:00:00Z',
+  },
+  alice: {
+    id: 'u-alice',
+    username: 'alice',
+    password: '123456',
+    displayName: 'Alice',
+    roles: ['staff'],
+    enabled: true,
+    createdAt: '2026-04-06T08:00:00Z',
+  },
 }
 
 // 动态注册的用户
@@ -128,6 +155,7 @@ const permissionMap: Record<string, string[]> = {
     'ticket:view',
     'ticket:create',
     'ticket:assign',
+    'ticket:transfer',
     'ticket:comment',
     'ticket:advance',
     'asset:view',
