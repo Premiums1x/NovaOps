@@ -52,6 +52,20 @@ const statusTextMap: Record<TicketStatus, string> = {
 
 const flowSteps: TicketStatus[] = ['pending', 'processing', 'review', 'done']
 
+const allowedActionsByStatus: Record<TicketStatus, readonly TicketActionType[]> = {
+  pending: ['assign'],
+  processing: ['transfer', 'advance', 'close'],
+  review: ['transfer', 'approve', 'reject', 'close'],
+  done: [],
+}
+
+const isActionAvailable = (action: TicketActionType) => {
+  if (!detail.value) {
+    return false
+  }
+  return allowedActionsByStatus[detail.value.status].includes(action)
+}
+
 const currentStep = computed(() => {
   if (!detail.value) {
     return 0
@@ -94,6 +108,10 @@ const refreshDetail = async () => {
 
 const doAction = async (action: TicketActionType) => {
   if (!detail.value) {
+    return
+  }
+  if (!isActionAvailable(action)) {
+    message.warning('当前工单状态不可执行此操作')
     return
   }
   if ((action === 'assign' || action === 'transfer') && !actionForm.assigneeId) {
@@ -178,9 +196,9 @@ onMounted(() => {
         <a-space>
           <Permission code="ticket:assign">
             <a-button
+              v-if="isActionAvailable('assign')"
               size="small"
               :loading="actionLoading"
-              :disabled="detail?.status === 'done'"
               @click="doAction('assign')"
             >
               指派
@@ -188,9 +206,9 @@ onMounted(() => {
           </Permission>
           <Permission code="ticket:transfer">
             <a-button
+              v-if="isActionAvailable('transfer')"
               size="small"
               :loading="actionLoading"
-              :disabled="detail?.status === 'done'"
               @click="doAction('transfer')"
             >
               转派
@@ -198,18 +216,45 @@ onMounted(() => {
           </Permission>
           <Permission code="ticket:close">
             <a-button
+              v-if="isActionAvailable('close')"
               size="small"
               danger
               :loading="actionLoading"
-              :disabled="detail?.status === 'done'"
               @click="doAction('close')"
             >
               关闭
             </a-button>
           </Permission>
           <Permission code="ticket:advance">
-            <a-button size="small" :loading="actionLoading" @click="doAction('advance')">推进状态</a-button>
-            <a-button size="small" :loading="actionLoading" @click="doAction('reject')">驳回</a-button>
+            <a-button
+              v-if="isActionAvailable('advance')"
+              size="small"
+              :loading="actionLoading"
+              @click="doAction('advance')"
+            >
+              提交复核
+            </a-button>
+          </Permission>
+          <Permission code="ticket:approve">
+            <a-button
+              v-if="isActionAvailable('approve')"
+              size="small"
+              type="primary"
+              :loading="actionLoading"
+              @click="doAction('approve')"
+            >
+              复核通过
+            </a-button>
+          </Permission>
+          <Permission code="ticket:reject">
+            <a-button
+              v-if="isActionAvailable('reject')"
+              size="small"
+              :loading="actionLoading"
+              @click="doAction('reject')"
+            >
+              驳回
+            </a-button>
           </Permission>
         </a-space>
       </template>

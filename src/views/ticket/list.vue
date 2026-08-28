@@ -308,15 +308,28 @@ const submitEdit = async () => {
 }
 
 const openAssignModal = (record: TicketListItemDto) => {
+  if (record.status !== 'pending') {
+    message.warning('仅待处理的工单可指派')
+    return
+  }
   currentRecord.value = record
   assignForm.assigneeId = record.assigneeId || ''
   assignForm.remark = ''
   assignModalVisible.value = true
 }
 
+const canAssignTicket = (record: TicketListItemDto) => record.status === 'pending'
+
+const canCloseTicket = (record: TicketListItemDto) =>
+  record.status === 'processing' || record.status === 'review'
+
 const submitAssign = async () => {
   if (!currentRecord.value || !assignForm.assigneeId) {
     message.warning('请选择指派对象')
+    return
+  }
+  if (!canAssignTicket(currentRecord.value)) {
+    message.warning('仅待处理的工单可指派')
     return
   }
   modalLoading.value = true
@@ -335,6 +348,10 @@ const submitAssign = async () => {
 }
 
 const closeTicket = async (record: TicketListItemDto) => {
+  if (!canCloseTicket(record)) {
+    message.warning('仅处理中或待复核的工单可关闭')
+    return
+  }
   Modal.confirm({
     title: `确认关闭工单 ${record.id}？`,
     content: '关闭后工单状态将变为已完成。',
@@ -480,16 +497,21 @@ onMounted(() => {
               </a-button>
             </Permission>
             <Permission code="ticket:assign">
-              <a-button type="link" size="small" @click="openAssignModal(record as TicketListItemDto)">
+              <a-button
+                v-if="canAssignTicket(record as TicketListItemDto)"
+                type="link"
+                size="small"
+                @click="openAssignModal(record as TicketListItemDto)"
+              >
                 指派
               </a-button>
             </Permission>
             <Permission code="ticket:close">
               <a-button
+                v-if="canCloseTicket(record as TicketListItemDto)"
                 type="link"
                 size="small"
                 danger
-                :disabled="(record as TicketListItemDto).status === 'done'"
                 @click="closeTicket(record as TicketListItemDto)"
               >
                 关闭
