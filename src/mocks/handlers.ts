@@ -201,8 +201,11 @@ export const handlers = [
     if (shouldPassthroughTicketBackend) return passthrough()
     const session = getSession(request)
     if (!session) return fail(401, 'token 无效')
-    const profile = buildUserProfile(session.username)
-    if (!profile.permissions.includes('asset:claim')) return fail(403, '无权限执行该操作')
+    const allowedPermissions = ['ticket:create', 'ticket:assign', 'ticket:transfer', 'asset:claim']
+    const permissions = buildUserProfile(session.username).permissions
+    if (!allowedPermissions.some((permission) => permissions.includes(permission))) {
+      return fail(403, '无权限执行该操作')
+    }
     return ok(
       listMockUsers()
         .filter((user) => user.enabled)

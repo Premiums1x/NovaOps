@@ -4,7 +4,8 @@ public class TicketTimelineItemResponse {
 
   private String id;
   private String action;
-  private String operator;
+  private String operatorId;
+  private String operatorName;
   private String remark;
   private String fromStatus;
   private String toStatus;
@@ -26,12 +27,20 @@ public class TicketTimelineItemResponse {
     this.action = action;
   }
 
-  public String getOperator() {
-    return operator;
+  public String getOperatorId() {
+    return operatorId;
   }
 
-  public void setOperator(String operator) {
-    this.operator = operator;
+  public void setOperatorId(String operatorId) {
+    this.operatorId = operatorId;
+  }
+
+  public String getOperatorName() {
+    return operatorName;
+  }
+
+  public void setOperatorName(String operatorName) {
+    this.operatorName = operatorName;
   }
 
   public String getRemark() {

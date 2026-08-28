@@ -7,8 +7,7 @@ public class TicketActionRequest {
   @NotBlank(message = "action 不能为空")
   private String action;
 
-  private String assignee;
-  private String targetUser;
+  private String assigneeId;
   private String remark;
 
   public String getAction() {
@@ -19,20 +18,12 @@ public class TicketActionRequest {
     this.action = action;
   }
 
-  public String getAssignee() {
-    return assignee;
+  public String getAssigneeId() {
+    return assigneeId;
   }
 
-  public void setAssignee(String assignee) {
-    this.assignee = assignee;
-  }
-
-  public String getTargetUser() {
-    return targetUser;
-  }
-
-  public void setTargetUser(String targetUser) {
-    this.targetUser = targetUser;
+  public void setAssigneeId(String assigneeId) {
+    this.assigneeId = assigneeId;
   }
 
   public String getRemark() {

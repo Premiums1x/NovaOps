@@ -3,7 +3,8 @@ package com.novaops.backend.ticket.dto;
 public class TicketCommentResponse {
 
   private String id;
-  private String author;
+  private String authorId;
+  private String authorName;
   private String content;
   private String createdAt;
 
@@ -15,12 +16,20 @@ public class TicketCommentResponse {
     this.id = id;
   }
 
-  public String getAuthor() {
-    return author;
+  public String getAuthorId() {
+    return authorId;
   }
 
-  public void setAuthor(String author) {
-    this.author = author;
+  public void setAuthorId(String authorId) {
+    this.authorId = authorId;
+  }
+
+  public String getAuthorName() {
+    return authorName;
+  }
+
+  public void setAuthorName(String authorName) {
+    this.authorName = authorName;
   }
 
   public String getContent() {

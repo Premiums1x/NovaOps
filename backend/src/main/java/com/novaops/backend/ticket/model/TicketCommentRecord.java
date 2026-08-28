@@ -6,7 +6,8 @@ public class TicketCommentRecord {
 
   private String id;
   private String ticketId;
-  private String author;
+  private String authorId;
+  private String authorName;
   private String content;
   private LocalDateTime createdAt;
 
@@ -26,12 +27,20 @@ public class TicketCommentRecord {
     this.ticketId = ticketId;
   }
 
-  public String getAuthor() {
-    return author;
+  public String getAuthorId() {
+    return authorId;
   }
 
-  public void setAuthor(String author) {
-    this.author = author;
+  public void setAuthorId(String authorId) {
+    this.authorId = authorId;
+  }
+
+  public String getAuthorName() {
+    return authorName;
+  }
+
+  public void setAuthorName(String authorName) {
+    this.authorName = authorName;
   }
 
   public String getContent() {

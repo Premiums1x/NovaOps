@@ -17,10 +17,12 @@ import type {
   UploadAttachmentDto,
 } from '@/types/ticket'
 import type { RelatedTicketDto } from '@/types/asset'
+import { getUser, listMockUsers } from './db'
 
 const statusFlow: TicketStatus[] = ['pending', 'processing', 'review', 'done']
 const priorities: TicketPriority[] = ['low', 'medium', 'high', 'urgent']
-const assignees = ['Tom', 'Jerry', 'Alice', 'Nova Team']
+// 种子工单的负责人候选：真实用户表中的运维人员/管理员
+const seedAssigneeIds = ['u-tom', 'u-jerry', 'u-alice', 'u-staff', 'u-admin']
 
 const tickets: TicketDetailDto[] = []
 
@@ -32,11 +34,27 @@ const formatTicketId = (index: number) => {
   return `A-TICKET-${String(index).padStart(4, '0')}`
 }
 
+const resolveUserId = (userId: string | undefined | null) => {
+  if (!userId) {
+    return null
+  }
+  return listMockUsers().find((item) => item.id === userId) || null
+}
+
+const resolveUsername = (username: string) => {
+  const user = getUser(username)
+  if (!user) {
+    return { id: username, displayName: username }
+  }
+  return { id: user.id, displayName: user.displayName }
+}
+
 const createTimelineItem = (payload: Partial<TicketTimelineItemDto>): TicketTimelineItemDto => {
   return {
     id: payload.id || uuid('tl'),
     action: payload.action || 'update',
-    operator: payload.operator || 'system',
+    operatorId: payload.operatorId || 'system',
+    operatorName: payload.operatorName || 'system',
     remark: payload.remark,
     fromStatus: payload.fromStatus,
     toStatus: payload.toStatus,
@@ -49,52 +67,93 @@ const seedTickets = () => {
     return
   }
 
+  const admin = resolveUserId('u-admin') || { id: 'u-admin', displayName: 'System Admin' }
+
   for (let index = 0; index < 24; index += 1) {
     const status = statusFlow[index % statusFlow.length] || 'pending'
     const priority = priorities[index % priorities.length] || 'medium'
     const createdAt = dayjs().subtract(index, 'day')
     const updatedAt = createdAt.add((index % 6) + 1, 'hour')
     const ticketId = formatTicketId(index + 1)
-    const assignee = assignees[index % assignees.length] || 'Nova Team'
+    const assignee = resolveUserId(seedAssigneeIds[index % seedAssigneeIds.length] || '')
+    const timeline: TicketTimelineItemDto[] = [
+      createTimelineItem({
+        action: 'create',
+        operatorId: admin.id,
+        operatorName: admin.displayName,
+        toStatus: 'pending',
+        remark: '创建工单',
+        createdAt: createdAt.toISOString(),
+      }),
+    ]
+    if (status !== 'pending') {
+      timeline.push(
+        createTimelineItem({
+          action: 'assign',
+          operatorId: admin.id,
+          operatorName: admin.displayName,
+          fromStatus: 'pending',
+          toStatus: 'processing',
+          remark: '初始指派',
+          createdAt: createdAt.add(1, 'hour').toISOString(),
+        })
+      )
+    }
+    if (status === 'review' || status === 'done') {
+      timeline.push(
+        createTimelineItem({
+          action: 'advance',
+          operatorId: assignee?.id,
+          operatorName: assignee?.displayName,
+          fromStatus: 'processing',
+          toStatus: 'review',
+          remark: '提交复核',
+          createdAt: createdAt.add(2, 'hour').toISOString(),
+        })
+      )
+    }
+    if (status === 'done') {
+      timeline.push(
+        createTimelineItem({
+          action: 'approve',
+          operatorId: admin.id,
+          operatorName: admin.displayName,
+          fromStatus: 'review',
+          toStatus: 'done',
+          remark: '复核通过',
+          createdAt: createdAt.add(3, 'hour').toISOString(),
+        })
+      )
+    }
+    const tom = resolveUserId('u-tom')
+    const alice = resolveUserId('u-alice')
     tickets.push({
       id: ticketId,
       title: `A 网络与终端巡检异常 #${index + 1}`,
       description: `巡检发现异常指标，需排查交换机/终端策略。工单编号 ${ticketId}。`,
       status,
       priority,
-      assignee,
-      creator: 'admin',
+      assigneeId: assignee?.id,
+      assigneeName: assignee?.displayName,
+      creatorId: admin.id,
+      creatorName: admin.displayName,
       createdAt: createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),
       dueDate: createdAt.add(3, 'day').toISOString(),
       assetIds: [`ASSET-${index + 1}`, `ASSET-${index + 101}`],
-      timeline: [
-        createTimelineItem({
-          action: 'create',
-          operator: 'admin',
-          toStatus: 'pending',
-          remark: '创建工单',
-          createdAt: createdAt.toISOString(),
-        }),
-        createTimelineItem({
-          action: 'advance',
-          operator: 'Tom',
-          fromStatus: 'pending',
-          toStatus: status === 'pending' ? 'pending' : 'processing',
-          remark: '首次响应',
-          createdAt: createdAt.add(2, 'hour').toISOString(),
-        }),
-      ],
+      timeline,
       comments: [
         {
           id: uuid('cm'),
-          author: 'Tom',
+          authorId: tom?.id || '',
+          authorName: tom?.displayName || '',
           content: '收到，正在排查日志。',
           createdAt: createdAt.add(3, 'hour').toISOString(),
         },
         {
           id: uuid('cm'),
-          author: 'Alice',
+          authorId: alice?.id || '',
+          authorName: alice?.displayName || '',
           content: '已补充现场截图。',
           createdAt: createdAt.add(6, 'hour').toISOString(),
         },
@@ -118,8 +177,10 @@ const toListItem = (ticket: TicketDetailDto): TicketListItemDto => {
     title: ticket.title,
     status: ticket.status,
     priority: ticket.priority,
-    assignee: ticket.assignee,
-    creator: ticket.creator,
+    assigneeId: ticket.assigneeId,
+    assigneeName: ticket.assigneeName,
+    creatorId: ticket.creatorId,
+    creatorName: ticket.creatorName,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
     assetIds: ticket.assetIds,
@@ -186,14 +247,21 @@ export const createTicket = (
 ): TicketDetailDto => {
   const now = dayjs().toISOString()
   const nextId = formatTicketId(tickets.length + 1)
+  const creator = resolveUsername(username)
+  const assignee = resolveUserId(payload.assigneeId || '')
+  if (payload.assigneeId && !assignee) {
+    throw new Error('指派对象不存在')
+  }
   const ticket: TicketDetailDto = {
     id: nextId,
     title: payload.title,
     description: payload.description,
     status: 'pending',
     priority: payload.priority,
-    assignee: payload.assignee || 'Unassigned',
-    creator: username,
+    assigneeId: assignee?.id,
+    assigneeName: assignee?.displayName,
+    creatorId: creator.id,
+    creatorName: creator.displayName,
     createdAt: now,
     updatedAt: now,
     dueDate: payload.dueDate,
@@ -203,7 +271,8 @@ export const createTicket = (
     timeline: [
       createTimelineItem({
         action: 'create',
-        operator: username,
+        operatorId: creator.id,
+        operatorName: creator.displayName,
         toStatus: 'pending',
         remark: '新建工单',
         createdAt: now,
@@ -226,16 +295,17 @@ export const updateTicket = (
   ticket.title = payload.title || ticket.title
   ticket.description = payload.description || ticket.description
   ticket.priority = payload.priority || ticket.priority
-  ticket.assignee = payload.assignee || ticket.assignee
   ticket.dueDate = payload.dueDate || ticket.dueDate
   if (payload.assetIds) {
     ticket.assetIds = payload.assetIds
   }
   ticket.updatedAt = dayjs().toISOString()
+  const operator = resolveUsername(username)
   ticket.timeline.unshift(
     createTimelineItem({
       action: 'update',
-      operator: username,
+      operatorId: operator.id,
+      operatorName: operator.displayName,
       remark: '更新工单信息',
       createdAt: ticket.updatedAt,
     })
@@ -244,8 +314,8 @@ export const updateTicket = (
 }
 
 const ILLEGAL_TRANSITION_MSG: Record<string, string> = {
-  assign: '已完成的工单不可再指派',
-  transfer: '已完成的工单不可再转派',
+  assign: '仅待处理的工单可指派',
+  transfer: '仅处理中或待复核的工单可转派',
   advance: '仅处理中的工单可提交复核',
   approve: '仅待复核的工单可复核通过',
   reject: '仅待复核的工单可驳回',
@@ -268,8 +338,9 @@ export const actionTicket = (
   const validate = (action: TicketActionType, status: TicketStatus): boolean => {
     switch (action) {
       case 'assign':
+        return status === 'pending'
       case 'transfer':
-        return status !== 'done'
+        return status === 'processing' || status === 'review'
       case 'advance':
         return status === 'processing'
       case 'approve':
@@ -288,17 +359,23 @@ export const actionTicket = (
 
   switch (payload.action) {
     case 'assign':
-      ticket.assignee = payload.assignee || ticket.assignee
-      if (ticket.status === 'pending') {
-        ticket.status = 'processing'
+    case 'transfer': {
+      if (!payload.assigneeId) {
+        throw new Error('请选择指派对象')
+      }
+      const assignee = resolveUserId(payload.assigneeId)
+      if (!assignee) {
+        throw new Error('指派对象不存在')
+      }
+      ticket.assigneeId = assignee.id
+      ticket.assigneeName = assignee.displayName
+      if (payload.action === 'assign') {
+        ticket.status = 'processing' // pending → processing（初始指派）
+      } else if (ticket.status === 'review') {
+        ticket.status = 'processing' // review 换人后退回重新处理
       }
       break
-    case 'transfer':
-      ticket.assignee = payload.targetUser || ticket.assignee
-      if (ticket.status === 'review') {
-        ticket.status = 'processing'
-      }
-      break
+    }
     case 'advance':
       ticket.status = 'review' // processing → review（提交复核）
       break
@@ -316,10 +393,12 @@ export const actionTicket = (
   }
 
   ticket.updatedAt = now
+  const operator = resolveUsername(username)
   ticket.timeline.unshift(
     createTimelineItem({
       action: payload.action,
-      operator: username,
+      operatorId: operator.id,
+      operatorName: operator.displayName,
       remark: payload.remark || undefined,
       fromStatus: previousStatus,
       toStatus: ticket.status,
@@ -346,9 +425,11 @@ export const createTicketComment = (
   if (!ticket) {
     return null
   }
+  const author = resolveUsername(username)
   const comment: TicketCommentDto = {
     id: uuid('cm'),
-    author: username,
+    authorId: author.id,
+    authorName: author.displayName,
     content: payload.content,
     createdAt: dayjs().toISOString(),
   }
@@ -387,7 +468,8 @@ export const listRelatedTicketsByAsset = (assetId: string): RelatedTicketDto[] =
       title: ticket.title,
       status: ticket.status,
       priority: ticket.priority,
-      assignee: ticket.assignee,
+      assigneeId: ticket.assigneeId,
+      assigneeName: ticket.assigneeName,
     }))
   return clone(related)
 }

@@ -93,17 +93,19 @@ public class TicketService {
     record.setDescription(request.getDescription());
     record.setStatus("pending");
     record.setPriority(StringUtils.hasText(request.getPriority()) ? request.getPriority() : "medium");
-    record.setAssignee(StringUtils.hasText(request.getAssignee()) ? request.getAssignee() : "Unassigned");
-    record.setCreator(session.getUsername());
+    if (StringUtils.hasText(request.getAssigneeId())) {
+      record.setAssigneeId(authService.requireEnabledUser(request.getAssigneeId()).getId());
+    }
+    record.setCreatorId(session.getUserId());
     record.setDueDate(DateTimeUtils.parseIsoDateTime(request.getDueDate()));
     record.setCreatedAt(now);
     record.setUpdatedAt(now);
 
     ticketMapper.insertTicket(record);
     replaceAssetRelations(record.getId(), request.getAssetIds());
-    ticketMapper.insertTimeline(buildTimeline(record.getId(), "create", session.getUsername(), "新建工单", null, "pending", now));
+    ticketMapper.insertTimeline(buildTimeline(record.getId(), "create", session.getUserId(), "新建工单", null, "pending", now));
 
-    return buildDetail(record);
+    return buildDetail(ticketMapper.findTicket(record.getId()));
   }
 
   @Transactional
@@ -119,9 +121,6 @@ public class TicketService {
     if (StringUtils.hasText(request.getPriority())) {
       record.setPriority(request.getPriority());
     }
-    if (StringUtils.hasText(request.getAssignee())) {
-      record.setAssignee(request.getAssignee());
-    }
     if (StringUtils.hasText(request.getDueDate())) {
       record.setDueDate(DateTimeUtils.parseIsoDateTime(request.getDueDate()));
     }
@@ -131,9 +130,9 @@ public class TicketService {
     if (request.getAssetIds() != null) {
       replaceAssetRelations(record.getId(), request.getAssetIds());
     }
-    ticketMapper.insertTimeline(buildTimeline(record.getId(), "update", session.getUsername(), "更新工单信息", null, null, record.getUpdatedAt()));
+    ticketMapper.insertTimeline(buildTimeline(record.getId(), "update", session.getUserId(), "更新工单信息", null, null, record.getUpdatedAt()));
 
-    return buildDetail(record);
+    return buildDetail(ticketMapper.findTicket(record.getId()));
   }
 
   @Transactional
@@ -157,24 +156,23 @@ public class TicketService {
     // 状态机前置校验：非法转移直接拒绝（409），防止跨状态倒退/重复关单/越权流转
     validateTransition(action, previousStatus);
 
+    // 指派/转派必须指定目标人员，且目标必须存在并启用
+    if (("assign".equals(action) || "transfer".equals(action)) && !StringUtils.hasText(request.getAssigneeId())) {
+      throw new BusinessException(400, "请选择指派对象");
+    }
+
     switch (action) {
       case "assign" -> {
-        if (StringUtils.hasText(request.getAssignee())) {
-          record.setAssignee(request.getAssignee());
-        }
-        if ("pending".equals(previousStatus)) {
-          record.setStatus("processing");
-        }
-        // 非 pending：仅换人，状态保持不变
+        // 初始指派：仅 pending → processing
+        record.setAssigneeId(authService.requireEnabledUser(request.getAssigneeId()).getId());
+        record.setStatus("processing");
       }
       case "transfer" -> {
-        if (StringUtils.hasText(request.getTargetUser())) {
-          record.setAssignee(request.getTargetUser());
-        }
+        // 转派换人：processing/review 均可，review 换人后退回 processing 重新处理
+        record.setAssigneeId(authService.requireEnabledUser(request.getAssigneeId()).getId());
         if ("review".equals(previousStatus)) {
           record.setStatus("processing");
         }
-        // 非 review：仅换人，状态保持不变
       }
       case "advance" -> record.setStatus("review");    // processing → review（提交复核）
       case "approve" -> record.setStatus("done");      // review → done（复核通过）
@@ -188,26 +186,32 @@ public class TicketService {
     ticketMapper.insertTimeline(buildTimeline(
         record.getId(),
         action,
-        session.getUsername(),
+        session.getUserId(),
         request.getRemark(),
         previousStatus,
         record.getStatus(),
         record.getUpdatedAt()
     ));
 
-    return buildDetail(record);
+    return buildDetail(ticketMapper.findTicket(record.getId()));
   }
 
   /**
    * 工单状态机转移矩阵：只有命中合法转移才放行，否则抛 409。
    * 状态：pending(待处理) → processing(处理中) → review(待复核) → done(已完成)。
-   * 动作语义：assign(指派)、advance(提交复核)、approve(复核通过)、reject(驳回)、close(关闭)、transfer(转派)。
+   * 动作语义：assign(初始指派，仅 pending)、advance(提交复核)、approve(复核通过)、
+   * reject(驳回)、close(关闭)、transfer(转派换人，processing/review)。
    */
   private void validateTransition(String action, String currentStatus) {
     switch (action) {
-      case "assign", "transfer" -> {
-        if ("done".equals(currentStatus)) {
-          throw new BusinessException(409, "已完成的工单不可再" + ("assign".equals(action) ? "指派" : "转派"));
+      case "assign" -> {
+        if (!"pending".equals(currentStatus)) {
+          throw new BusinessException(409, "仅待处理的工单可指派");
+        }
+      }
+      case "transfer" -> {
+        if (!"processing".equals(currentStatus) && !"review".equals(currentStatus)) {
+          throw new BusinessException(409, "仅处理中或待复核的工单可转派");
         }
       }
       case "advance" -> {
@@ -250,7 +254,7 @@ public class TicketService {
     TicketCommentRecord comment = new TicketCommentRecord();
     comment.setId(IdGenerator.randomId("cm"));
     comment.setTicketId(ticketId);
-    comment.setAuthor(session.getUsername());
+    comment.setAuthorId(session.getUserId());
     comment.setContent(request.getContent().trim());
     comment.setCreatedAt(now);
     ticketMapper.insertComment(comment);
@@ -294,8 +298,10 @@ public class TicketService {
     response.setDescription(record.getDescription());
     response.setStatus(record.getStatus());
     response.setPriority(record.getPriority());
-    response.setAssignee(record.getAssignee());
-    response.setCreator(record.getCreator());
+    response.setAssigneeId(record.getAssigneeId());
+    response.setAssigneeName(record.getAssigneeName());
+    response.setCreatorId(record.getCreatorId());
+    response.setCreatorName(record.getCreatorName());
     response.setCreatedAt(DateTimeUtils.toIsoString(record.getCreatedAt()));
     response.setUpdatedAt(DateTimeUtils.toIsoString(record.getUpdatedAt()));
     response.setDueDate(DateTimeUtils.toIsoString(record.getDueDate()));
@@ -312,8 +318,10 @@ public class TicketService {
     response.setTitle(record.getTitle());
     response.setStatus(record.getStatus());
     response.setPriority(record.getPriority());
-    response.setAssignee(record.getAssignee());
-    response.setCreator(record.getCreator());
+    response.setAssigneeId(record.getAssigneeId());
+    response.setAssigneeName(record.getAssigneeName());
+    response.setCreatorId(record.getCreatorId());
+    response.setCreatorName(record.getCreatorName());
     response.setCreatedAt(DateTimeUtils.toIsoString(record.getCreatedAt()));
     response.setUpdatedAt(DateTimeUtils.toIsoString(record.getUpdatedAt()));
     response.setAssetIds(assetIds);
@@ -324,7 +332,8 @@ public class TicketService {
     TicketTimelineItemResponse response = new TicketTimelineItemResponse();
     response.setId(record.getId());
     response.setAction(record.getAction());
-    response.setOperator(record.getOperator());
+    response.setOperatorId(record.getOperatorId());
+    response.setOperatorName(record.getOperatorName());
     response.setRemark(record.getRemark());
     response.setFromStatus(record.getFromStatus());
     response.setToStatus(record.getToStatus());
@@ -335,7 +344,8 @@ public class TicketService {
   private TicketCommentResponse toComment(TicketCommentRecord record) {
     TicketCommentResponse response = new TicketCommentResponse();
     response.setId(record.getId());
-    response.setAuthor(record.getAuthor());
+    response.setAuthorId(record.getAuthorId());
+    response.setAuthorName(record.getAuthorName());
     response.setContent(record.getContent());
     response.setCreatedAt(DateTimeUtils.toIsoString(record.getCreatedAt()));
     return response;
@@ -366,7 +376,7 @@ public class TicketService {
   private TicketTimelineRecord buildTimeline(
       String ticketId,
       String action,
-      String operator,
+      String operatorId,
       String remark,
       String fromStatus,
       String toStatus,
@@ -376,7 +386,7 @@ public class TicketService {
     record.setId(IdGenerator.randomId("tl"));
     record.setTicketId(ticketId);
     record.setAction(action);
-    record.setOperator(operator);
+    record.setOperatorId(operatorId);
     record.setRemark(remark);
     record.setFromStatus(fromStatus);
     record.setToStatus(toStatus);

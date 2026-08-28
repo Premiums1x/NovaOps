@@ -7,6 +7,7 @@ import type { CheckboxOptionType, TableProps } from 'ant-design-vue'
 import { SettingOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import ProTable from '@/components/pro-table/index.vue'
+import { getUserOptionsApi } from '@/api/auth'
 import {
   createTicketApi,
   getTicketDetailApi,
@@ -22,6 +23,7 @@ import type {
   TicketStatus,
   UpdateTicketDto,
 } from '@/types/ticket'
+import type { UserOptionDto } from '@/types/auth'
 
 defineOptions({
   name: 'TicketList',
@@ -29,7 +31,7 @@ defineOptions({
 
 const router = useRouter()
 const COLUMN_STORAGE_KEY = 'novaops_ticket_columns'
-const DEFAULT_VISIBLE_COLUMNS = ['id', 'title', 'status', 'priority', 'assignee', 'creator', 'updatedAt']
+const DEFAULT_VISIBLE_COLUMNS = ['id', 'title', 'status', 'priority', 'assigneeName', 'creatorName', 'updatedAt']
 
 const loading = ref(false)
 const tableData = ref<TicketListItemDto[]>([])
@@ -54,12 +56,13 @@ const editModalVisible = ref(false)
 const assignModalVisible = ref(false)
 const modalLoading = ref(false)
 const currentRecord = ref<TicketListItemDto | null>(null)
+const assigneeUsers = ref<UserOptionDto[]>([])
 
 const createForm = reactive<CreateTicketDto>({
   title: '',
   description: '',
   priority: 'medium',
-  assignee: '',
+  assigneeId: '',
   dueDate: '',
   assetIds: [],
 })
@@ -68,13 +71,12 @@ const editForm = reactive<UpdateTicketDto>({
   title: '',
   description: '',
   priority: 'medium',
-  assignee: '',
   dueDate: '',
   assetIds: [],
 })
 
 const assignForm = reactive({
-  assignee: '',
+  assigneeId: '',
   remark: '',
 })
 
@@ -99,12 +101,12 @@ const priorityColorMap: Record<TicketPriority, string> = {
   urgent: 'red',
 }
 
-const assigneeOptions = [
-  { label: 'Tom', value: 'Tom' },
-  { label: 'Jerry', value: 'Jerry' },
-  { label: 'Alice', value: 'Alice' },
-  { label: 'Nova Team', value: 'Nova Team' },
-]
+const assigneeOptions = computed(() =>
+  assigneeUsers.value.map((user) => ({
+    label: user.displayName,
+    value: user.id,
+  }))
+)
 
 const restoreVisibleColumns = () => {
   const cache = localStorage.getItem(COLUMN_STORAGE_KEY)
@@ -116,7 +118,11 @@ const restoreVisibleColumns = () => {
     if (!Array.isArray(parsed)) {
       return DEFAULT_VISIBLE_COLUMNS
     }
-    return parsed
+    return parsed.map((key) => {
+      if (key === 'assignee') return 'assigneeName'
+      if (key === 'creator') return 'creatorName'
+      return key
+    })
   } catch {
     return DEFAULT_VISIBLE_COLUMNS
   }
@@ -137,8 +143,8 @@ const allColumns = [
   { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true, width: 280 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
   { title: '优先级', dataIndex: 'priority', key: 'priority', width: 110 },
-  { title: '负责人', dataIndex: 'assignee', key: 'assignee', width: 120 },
-  { title: '创建人', dataIndex: 'creator', key: 'creator', width: 120 },
+  { title: '负责人', dataIndex: 'assigneeName', key: 'assigneeName', width: 120 },
+  { title: '创建人', dataIndex: 'creatorName', key: 'creatorName', width: 120 },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 180 },
   { title: '关联资产', dataIndex: 'assetIds', key: 'assetIds', width: 200 },
   { title: '操作', key: 'actions', fixed: 'right' as const, width: 260 },
@@ -222,8 +228,8 @@ const exportCsv = () => {
     row.title,
     statusTextMap[row.status],
     priorityTextMap[row.priority],
-    row.assignee,
-    row.creator,
+    row.assigneeName || '',
+    row.creatorName,
     dayjs(row.updatedAt).format('YYYY-MM-DD HH:mm:ss'),
   ])
   const csv = [
@@ -246,7 +252,7 @@ const openCreateModal = () => {
   createForm.title = ''
   createForm.description = ''
   createForm.priority = 'medium'
-  createForm.assignee = ''
+  createForm.assigneeId = ''
   createForm.dueDate = ''
   createForm.assetIds = []
   createModalVisible.value = true
@@ -275,7 +281,6 @@ const openEditModal = async (record: TicketListItemDto) => {
     editForm.title = detail.title
     editForm.description = detail.description
     editForm.priority = detail.priority
-    editForm.assignee = detail.assignee
     editForm.assetIds = [...detail.assetIds]
     editForm.dueDate = detail.dueDate || ''
   } finally {
@@ -304,13 +309,13 @@ const submitEdit = async () => {
 
 const openAssignModal = (record: TicketListItemDto) => {
   currentRecord.value = record
-  assignForm.assignee = record.assignee || ''
+  assignForm.assigneeId = record.assigneeId || ''
   assignForm.remark = ''
   assignModalVisible.value = true
 }
 
 const submitAssign = async () => {
-  if (!currentRecord.value || !assignForm.assignee) {
+  if (!currentRecord.value || !assignForm.assigneeId) {
     message.warning('请选择指派对象')
     return
   }
@@ -318,7 +323,7 @@ const submitAssign = async () => {
   try {
     await ticketActionApi(currentRecord.value.id, {
       action: 'assign',
-      assignee: assignForm.assignee,
+      assigneeId: assignForm.assigneeId,
       remark: assignForm.remark || '列表页指派',
     })
     message.success('指派成功')
@@ -354,7 +359,12 @@ const handleCreateAssetInput = (event: Event) => {
 }
 
 onMounted(() => {
-  void fetchTickets()
+  void Promise.all([
+    fetchTickets(),
+    getUserOptionsApi().then((users) => {
+      assigneeUsers.value = users
+    }),
+  ])
 })
 </script>
 
@@ -515,7 +525,7 @@ onMounted(() => {
           />
         </a-form-item>
         <a-form-item label="负责人">
-          <a-select v-model:value="createForm.assignee" allow-clear :options="assigneeOptions" />
+          <a-select v-model:value="createForm.assigneeId" allow-clear :options="assigneeOptions" />
         </a-form-item>
         <a-form-item label="关联资产 (逗号分隔)">
           <a-input :value="(createForm.assetIds || []).join(',')" @change="handleCreateAssetInput" />
@@ -547,9 +557,6 @@ onMounted(() => {
             ]"
           />
         </a-form-item>
-        <a-form-item label="负责人">
-          <a-select v-model:value="editForm.assignee" allow-clear :options="assigneeOptions" />
-        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -561,7 +568,7 @@ onMounted(() => {
     >
       <a-form layout="vertical">
         <a-form-item label="指派给" required>
-          <a-select v-model:value="assignForm.assignee" :options="assigneeOptions" />
+          <a-select v-model:value="assignForm.assigneeId" :options="assigneeOptions" />
         </a-form-item>
         <a-form-item label="备注">
           <a-textarea v-model:value="assignForm.remark" :rows="3" />
