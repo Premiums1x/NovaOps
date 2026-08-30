@@ -133,7 +133,7 @@ onMounted(() => {
           { title: '标题', dataIndex: 'title', key: 'title' },
           { title: '状态', dataIndex: 'status', key: 'status', width: 120 },
           { title: '优先级', dataIndex: 'priority', key: 'priority', width: 120 },
-          { title: '负责人', dataIndex: 'assignee', key: 'assignee', width: 120 },
+          { title: '负责人', dataIndex: 'assigneeName', key: 'assigneeName', width: 120 },
           { title: '操作', key: 'actions', width: 100 },
         ]"
       >

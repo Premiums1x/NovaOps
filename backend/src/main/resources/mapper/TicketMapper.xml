@@ -7,44 +7,56 @@
   <sql id="ticketFilters">
     where 1 = 1
     <if test="status != null and status != ''">
-      and status = #{status}
+      and t.status = #{status}
     </if>
     <if test="priority != null and priority != ''">
-      and priority = #{priority}
+      and t.priority = #{priority}
     </if>
     <if test="keyword != null and keyword != ''">
       and (
-        lower(id) like concat('%', lower(#{keyword}), '%')
-        or lower(title) like concat('%', lower(#{keyword}), '%')
-        or lower(description) like concat('%', lower(#{keyword}), '%')
+        lower(t.id) like concat('%', lower(#{keyword}), '%')
+        or lower(t.title) like concat('%', lower(#{keyword}), '%')
+        or lower(t.description) like concat('%', lower(#{keyword}), '%')
       )
     </if>
     <if test="startDate != null">
-      and created_at <![CDATA[>=]]> #{startDate}
+      and t.created_at <![CDATA[>=]]> #{startDate}
     </if>
     <if test="endDate != null">
-      and created_at <![CDATA[<=]]> #{endDate}
+      and t.created_at <![CDATA[<=]]> #{endDate}
     </if>
   </sql>
 
   <select id="countTickets" resultType="long">
     select count(1)
-    from biz_ticket
+    from biz_ticket t
+    left join sys_user a on a.id = t.assignee_id
+    left join sys_user c on c.id = t.creator_id
     <include refid="ticketFilters" />
   </select>
 
   <select id="queryTickets" resultType="com.novaops.backend.ticket.model.TicketRecord">
-    select id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at
-    from biz_ticket
+    select t.id, t.title, t.description, t.status, t.priority,
+           t.assignee_id, a.display_name as assignee_name,
+           t.creator_id, c.display_name as creator_name,
+           t.due_date, t.created_at, t.updated_at
+    from biz_ticket t
+    left join sys_user a on a.id = t.assignee_id
+    left join sys_user c on c.id = t.creator_id
     <include refid="ticketFilters" />
-    order by updated_at desc
+    order by t.updated_at desc
     limit #{limit} offset #{offset}
   </select>
 
   <select id="findTicket" resultType="com.novaops.backend.ticket.model.TicketRecord">
-    select id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at
-    from biz_ticket
-    where id = #{ticketId}
+    select t.id, t.title, t.description, t.status, t.priority,
+           t.assignee_id, a.display_name as assignee_name,
+           t.creator_id, c.display_name as creator_name,
+           t.due_date, t.created_at, t.updated_at
+    from biz_ticket t
+    left join sys_user a on a.id = t.assignee_id
+    left join sys_user c on c.id = t.creator_id
+    where t.id = #{ticketId}
     limit 1
   </select>
 
@@ -55,8 +67,8 @@
       description,
       status,
       priority,
-      assignee,
-      creator,
+      assignee_id,
+      creator_id,
       due_date,
       created_at,
       updated_at
@@ -66,8 +78,8 @@
       #{description},
       #{status},
       #{priority},
-      #{assignee},
-      #{creator},
+      #{assigneeId},
+      #{creatorId},
       #{dueDate},
       #{createdAt},
       #{updatedAt}
@@ -80,8 +92,8 @@
         description = #{description},
         status = #{status},
         priority = #{priority},
-        assignee = #{assignee},
-        creator = #{creator},
+        assignee_id = #{assigneeId},
+        creator_id = #{creatorId},
         due_date = #{dueDate},
         updated_at = #{updatedAt}
     where id = #{id}
@@ -115,10 +127,13 @@
   </select>
 
   <select id="listTimeline" resultType="com.novaops.backend.ticket.model.TicketTimelineRecord">
-    select id, ticket_id, action, operator, remark, from_status, to_status, created_at
-    from biz_ticket_timeline
-    where ticket_id = #{ticketId}
-    order by created_at desc, id desc
+    select tl.id, tl.ticket_id, tl.action,
+           tl.operator_id, u.display_name as operator_name,
+           tl.remark, tl.from_status, tl.to_status, tl.created_at
+    from biz_ticket_timeline tl
+    left join sys_user u on u.id = tl.operator_id
+    where tl.ticket_id = #{ticketId}
+    order by tl.created_at desc, tl.id desc
   </select>
 
   <insert id="insertTimeline" parameterType="com.novaops.backend.ticket.model.TicketTimelineRecord">
@@ -126,7 +141,7 @@
       id,
       ticket_id,
       action,
-      operator,
+      operator_id,
       remark,
       from_status,
       to_status,
@@ -135,7 +150,7 @@
       #{id},
       #{ticketId},
       #{action},
-      #{operator},
+      #{operatorId},
       #{remark},
       #{fromStatus},
       #{toStatus},
@@ -144,23 +159,26 @@
   </insert>
 
   <select id="listComments" resultType="com.novaops.backend.ticket.model.TicketCommentRecord">
-    select id, ticket_id, author, content, created_at
-    from biz_ticket_comment
-    where ticket_id = #{ticketId}
-    order by created_at desc, id desc
+    select cm.id, cm.ticket_id,
+           cm.author_id, u.display_name as author_name,
+           cm.content, cm.created_at
+    from biz_ticket_comment cm
+    left join sys_user u on u.id = cm.author_id
+    where cm.ticket_id = #{ticketId}
+    order by cm.created_at desc, cm.id desc
   </select>
 
   <insert id="insertComment" parameterType="com.novaops.backend.ticket.model.TicketCommentRecord">
     insert into biz_ticket_comment (
       id,
       ticket_id,
-      author,
+      author_id,
       content,
       created_at
     ) values (
       #{id},
       #{ticketId},
-      #{author},
+      #{authorId},
       #{content},
       #{createdAt}
     )

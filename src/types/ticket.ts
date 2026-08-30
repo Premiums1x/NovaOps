@@ -14,7 +14,8 @@ export interface TicketAttachmentDto {
 
 export interface TicketCommentDto {
   id: string
-  author: string
+  authorId: string
+  authorName: string
   content: string
   createdAt: string
 }
@@ -22,7 +23,8 @@ export interface TicketCommentDto {
 export interface TicketTimelineItemDto {
   id: string
   action: TicketActionType | 'create' | 'update'
-  operator: string
+  operatorId: string
+  operatorName: string
   remark?: string
   fromStatus?: TicketStatus
   toStatus?: TicketStatus
@@ -34,8 +36,10 @@ export interface TicketListItemDto {
   title: string
   status: TicketStatus
   priority: TicketPriority
-  assignee: string
-  creator: string
+  assigneeId?: string
+  assigneeName?: string
+  creatorId: string
+  creatorName: string
   createdAt: string
   updatedAt: string
   assetIds: string[]
@@ -63,7 +67,7 @@ export interface CreateTicketDto {
   title: string
   description: string
   priority: TicketPriority
-  assignee?: string
+  assigneeId?: string
   dueDate?: string
   assetIds?: string[]
 }
@@ -72,15 +76,13 @@ export interface UpdateTicketDto {
   title?: string
   description?: string
   priority?: TicketPriority
-  assignee?: string
   dueDate?: string
   assetIds?: string[]
 }
 
 export interface TicketActionDto {
   action: TicketActionType
-  assignee?: string
-  targetUser?: string
+  assigneeId?: string
   remark?: string
 }
 

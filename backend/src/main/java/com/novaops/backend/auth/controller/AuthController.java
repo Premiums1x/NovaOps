@@ -19,7 +19,6 @@ import com.novaops.backend.auth.service.AuthService;
 import com.novaops.backend.common.api.ApiResponse;
 import com.novaops.backend.common.api.PageResult;
 import com.novaops.backend.common.security.RequestContext;
-import com.novaops.backend.common.security.RequirePermission;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -81,9 +80,16 @@ public class AuthController {
     return ApiResponse.success(authService.listUsers(RequestContext.getRequired(), query));
   }
 
+  // 启用用户选项（工单创建/指派/转派、资产领用共用）
   @GetMapping("/user-options")
-  @RequirePermission("asset:claim")
   public ApiResponse<List<UserOptionResponse>> userOptions() {
+    authService.requireAnyPermission(
+        RequestContext.getRequired(),
+        "ticket:create",
+        "ticket:assign",
+        "ticket:transfer",
+        "asset:claim"
+    );
     return ApiResponse.success(authService.listUserOptions());
   }
 

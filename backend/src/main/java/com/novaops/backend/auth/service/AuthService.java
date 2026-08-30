@@ -250,6 +250,17 @@ public class AuthService {
     }
   }
 
+  /** 调用者持有任意一个权限码即可，用于多个业务共用的只读接口。 */
+  public void requireAnyPermission(CurrentSession session, String... codes) {
+    List<String> granted = authMapper.listPermissions(session.getUserId());
+    for (String code : codes) {
+      if (granted.contains(code)) {
+        return;
+      }
+    }
+    throw new BusinessException(403, "无权限执行该操作");
+  }
+
   private LoginResponse issueLoginSession(UserRecord user) {
     String refreshToken = IdGenerator.randomId("rt");
     LocalDateTime expiresAt = LocalDateTime.now().plusDays(jwtService.getRefreshTokenExpireDays());

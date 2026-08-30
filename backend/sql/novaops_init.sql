@@ -140,26 +140,31 @@ create table biz_ticket (
   description text not null,
   status varchar(32) not null,
   priority varchar(32) not null,
-  assignee varchar(100) not null,
-  creator varchar(100) not null,
+  assignee_id varchar(64) null,
+  creator_id varchar(64) not null,
   due_date datetime null,
   created_at datetime not null,
   updated_at datetime not null,
   index idx_ticket_updated (updated_at desc),
   index idx_ticket_status (status),
-  index idx_ticket_priority (priority)
+  index idx_ticket_priority (priority),
+  index idx_ticket_assignee (assignee_id),
+  index idx_ticket_creator (creator_id),
+  constraint fk_ticket_assignee foreign key (assignee_id) references sys_user (id),
+  constraint fk_ticket_creator foreign key (creator_id) references sys_user (id)
 );
 
 create table biz_ticket_timeline (
   id varchar(64) primary key,
   ticket_id varchar(64) not null,
   action varchar(32) not null,
-  operator varchar(100) not null,
+  operator_id varchar(64) null,
   remark varchar(255) null,
   from_status varchar(32) null,
   to_status varchar(32) null,
   created_at datetime not null,
-  index idx_ticket_timeline_ticket (ticket_id, created_at desc)
+  index idx_ticket_timeline_ticket (ticket_id, created_at desc),
+  constraint fk_ticket_timeline_operator foreign key (operator_id) references sys_user (id)
 );
 
 create table biz_ticket_asset_rel (
@@ -171,10 +176,11 @@ create table biz_ticket_asset_rel (
 create table biz_ticket_comment (
   id varchar(64) primary key,
   ticket_id varchar(64) not null,
-  author varchar(100) not null,
+  author_id varchar(64) null,
   content text not null,
   created_at datetime not null,
-  index idx_ticket_comment_ticket (ticket_id, created_at desc)
+  index idx_ticket_comment_ticket (ticket_id, created_at desc),
+  constraint fk_ticket_comment_author foreign key (author_id) references sys_user (id)
 );
 
 create table biz_ticket_attachment (
@@ -218,10 +224,13 @@ create table biz_asset_log (
   index idx_asset_log_asset (asset_id, created_at desc)
 );
 
-insert into sys_user (id, username, password_hash, display_name, role_id, enabled, deleted) values
-  ('u-admin', 'admin', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'System Admin', 'role-admin', 1, 0),
-  ('u-staff', 'staff', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Support Staff', 'role-staff', 1, 0),
-  ('u-guest', 'guest', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Read-only Guest', 'role-guest', 1, 0);
+insert into sys_user (id, username, email, password_hash, display_name, role_id, enabled, must_change_password, deleted) values
+  ('u-admin', 'admin', 'admin@novaops.local', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'System Admin', 'role-admin', 1, 0, 0),
+  ('u-staff', 'staff', 'staff@novaops.local', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Support Staff', 'role-staff', 1, 0, 0),
+  ('u-guest', 'guest', 'guest@novaops.local', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Read-only Guest', 'role-guest', 1, 0, 0),
+  ('u-tom', 'tom', 'tom@novaops.local', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Tom', 'role-staff', 1, 0, 0),
+  ('u-jerry', 'jerry', 'jerry@novaops.local', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Jerry', 'role-staff', 1, 0, 0),
+  ('u-alice', 'alice', 'alice@novaops.local', '$2a$10$t4amKqsqabkgwLhaZpj0F.wDk7mpyJgZokQRAdTfrxaIwPilCrHoq', 'Alice', 'role-staff', 1, 0, 0);
 
 insert into sys_role (id, code, name, description, sort_order) values
   ('role-admin', 'admin', '管理员', '管理用户、身份、知识库以及全部业务数据', 10),
@@ -279,6 +288,7 @@ insert into sys_role_permission (role_id, permission_id) values
   ('role-staff', 'perm-ticket-view'),
   ('role-staff', 'perm-ticket-create'),
   ('role-staff', 'perm-ticket-assign'),
+  ('role-staff', 'perm-ticket-transfer'),
   ('role-staff', 'perm-ticket-advance'),
   ('role-staff', 'perm-ticket-comment'),
   ('role-staff', 'perm-asset-view'),
@@ -305,11 +315,11 @@ insert into sys_menu (id, title, name, path, component, icon, permission_code, k
   ('staff-ticket-list', '工单列表', 'TicketList', '/ticket/list', 'TicketListView', null, 'ticket:view', 1, 'staff-ticket', 21, 'staff'),
   ('guest-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'guest');
 
-insert into biz_ticket (id, title, description, status, priority, assignee, creator, due_date, created_at, updated_at) values
-  ('A-TICKET-0001', 'TENANT-A 网络与终端巡检异常 #1', '巡检发现交换机端口丢包，需要排查链路质量。', 'pending', 'medium', 'Tom', 'admin', '2026-04-25 18:00:00', '2026-04-20 09:00:00', '2026-04-20 11:00:00'),
-  ('A-TICKET-0002', 'TENANT-A VPN 访问波动 #2', '多名员工反馈 VPN 间歇性掉线，需排查网关与策略。', 'processing', 'high', 'Jerry', 'admin', '2026-04-24 18:00:00', '2026-04-19 10:00:00', '2026-04-20 12:30:00'),
-  ('A-TICKET-0003', 'TENANT-A 终端补丁异常 #3', 'Windows 补丁安装失败，影响办公终端安全合规。', 'review', 'urgent', 'Alice', 'staff', '2026-04-23 18:00:00', '2026-04-18 13:00:00', '2026-04-20 14:00:00'),
-  ('A-TICKET-0004', 'TENANT-A 日志采集恢复验证 #4', '采集链路已恢复，需要复核日志完整性与时间同步。', 'done', 'low', 'Nova Team', 'staff', '2026-04-22 18:00:00', '2026-04-17 14:00:00', '2026-04-20 15:00:00');
+insert into biz_ticket (id, title, description, status, priority, assignee_id, creator_id, due_date, created_at, updated_at) values
+  ('A-TICKET-0001', 'TENANT-A 网络与终端巡检异常 #1', '巡检发现交换机端口丢包，需要排查链路质量。', 'pending', 'medium', 'u-tom', 'u-admin', '2026-04-25 18:00:00', '2026-04-20 09:00:00', '2026-04-20 11:00:00'),
+  ('A-TICKET-0002', 'TENANT-A VPN 访问波动 #2', '多名员工反馈 VPN 间歇性掉线，需排查网关与策略。', 'processing', 'high', 'u-jerry', 'u-admin', '2026-04-24 18:00:00', '2026-04-19 10:00:00', '2026-04-20 12:30:00'),
+  ('A-TICKET-0003', 'TENANT-A 终端补丁异常 #3', 'Windows 补丁安装失败，影响办公终端安全合规。', 'review', 'urgent', 'u-alice', 'u-staff', '2026-04-23 18:00:00', '2026-04-18 13:00:00', '2026-04-20 14:00:00'),
+  ('A-TICKET-0004', 'TENANT-A 日志采集恢复验证 #4', '采集链路已恢复，需要复核日志完整性与时间同步。', 'done', 'low', 'u-admin', 'u-staff', '2026-04-22 18:00:00', '2026-04-17 14:00:00', '2026-04-20 15:00:00');
 
 insert into biz_ticket_asset_rel (ticket_id, asset_id) values
   ('A-TICKET-0001', 'ASSET-1'),
@@ -319,19 +329,18 @@ insert into biz_ticket_asset_rel (ticket_id, asset_id) values
   ('A-TICKET-0003', 'ASSET-3'),
   ('A-TICKET-0004', 'ASSET-4');
 
-insert into biz_ticket_timeline (id, ticket_id, action, operator, remark, from_status, to_status, created_at) values
-  ('tl-a1-1', 'A-TICKET-0001', 'create', 'admin', '创建工单', null, 'pending', '2026-04-20 09:00:00'),
-  ('tl-a1-2', 'A-TICKET-0001', 'advance', 'Tom', '首次响应', 'pending', 'processing', '2026-04-20 11:00:00'),
-  ('tl-a2-1', 'A-TICKET-0002', 'create', 'admin', '创建工单', null, 'pending', '2026-04-19 10:00:00'),
-  ('tl-a2-2', 'A-TICKET-0002', 'assign', 'admin', '列表页指派', 'pending', 'processing', '2026-04-20 12:30:00'),
-  ('tl-a3-1', 'A-TICKET-0003', 'create', 'staff', '创建工单', null, 'pending', '2026-04-18 13:00:00'),
-  ('tl-a3-2', 'A-TICKET-0003', 'advance', 'Alice', '进入复核', 'processing', 'review', '2026-04-20 14:00:00'),
-  ('tl-a4-1', 'A-TICKET-0004', 'create', 'staff', '创建工单', null, 'pending', '2026-04-17 14:00:00'),
-  ('tl-a4-2', 'A-TICKET-0004', 'close', 'Nova Team', '处理完成', 'review', 'done', '2026-04-20 15:00:00');
+insert into biz_ticket_timeline (id, ticket_id, action, operator_id, remark, from_status, to_status, created_at) values
+  ('tl-a1-1', 'A-TICKET-0001', 'create', 'u-admin', '创建工单', null, 'pending', '2026-04-20 09:00:00'),
+  ('tl-a2-1', 'A-TICKET-0002', 'create', 'u-admin', '创建工单', null, 'pending', '2026-04-19 10:00:00'),
+  ('tl-a2-2', 'A-TICKET-0002', 'assign', 'u-admin', '列表页指派', 'pending', 'processing', '2026-04-20 12:30:00'),
+  ('tl-a3-1', 'A-TICKET-0003', 'create', 'u-staff', '创建工单', null, 'pending', '2026-04-18 13:00:00'),
+  ('tl-a3-2', 'A-TICKET-0003', 'advance', 'u-alice', '进入复核', 'processing', 'review', '2026-04-20 14:00:00'),
+  ('tl-a4-1', 'A-TICKET-0004', 'create', 'u-staff', '创建工单', null, 'pending', '2026-04-17 14:00:00'),
+  ('tl-a4-2', 'A-TICKET-0004', 'close', 'u-admin', '处理完成', 'review', 'done', '2026-04-20 15:00:00');
 
-insert into biz_ticket_comment (id, ticket_id, author, content, created_at) values
-  ('cm-a1-1', 'A-TICKET-0001', 'Tom', '收到，正在排查核心交换机日志。', '2026-04-20 11:20:00'),
-  ('cm-a1-2', 'A-TICKET-0001', 'Alice', '已补充现场截图。', '2026-04-20 12:10:00');
+insert into biz_ticket_comment (id, ticket_id, author_id, content, created_at) values
+  ('cm-a1-1', 'A-TICKET-0001', 'u-tom', '收到，正在排查核心交换机日志。', '2026-04-20 11:20:00'),
+  ('cm-a1-2', 'A-TICKET-0001', 'u-alice', '已补充现场截图。', '2026-04-20 12:10:00');
 
 insert into biz_ticket_attachment (id, ticket_id, name, url, size, created_at) values
   ('att-a1-1', 'A-TICKET-0001', 'switch-log.txt', '/mock-attachments/A-TICKET-0001/switch-log.txt', 20480, '2026-04-20 12:00:00');

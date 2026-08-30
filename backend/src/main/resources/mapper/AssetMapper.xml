@@ -100,8 +100,10 @@
   </select>
 
   <select id="listRelatedTickets" resultType="com.novaops.backend.asset.dto.RelatedTicket">
-    select t.id, t.title, t.status, t.priority, t.assignee
+    select t.id, t.title, t.status, t.priority,
+           t.assignee_id, u.display_name as assignee_name
     from biz_ticket t
+    left join sys_user u on u.id = t.assignee_id
     inner join biz_ticket_asset_rel r on r.ticket_id = t.id
     where r.asset_id = #{assetId}
     order by t.updated_at desc
