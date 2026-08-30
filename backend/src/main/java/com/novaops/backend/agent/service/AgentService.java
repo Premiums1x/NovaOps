@@ -2,147 +2,97 @@ package com.novaops.backend.agent.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novaops.backend.agent.dto.ChatRequest;
-import com.novaops.backend.agent.dto.CitationDto;
 import com.novaops.backend.agent.dto.ConversationDetailResponse;
 import com.novaops.backend.agent.mapper.AgentMapper;
 import com.novaops.backend.agent.model.AgentMessageRecord;
 import com.novaops.backend.agent.model.ConversationRecord;
+import com.novaops.backend.agent.model.ConversationTurn;
+import com.novaops.backend.agent.model.QueryRoute;
+import com.novaops.backend.agent.model.ValidationStatus;
+import com.novaops.backend.agent.model.WorkflowResult;
 import com.novaops.backend.common.exception.BusinessException;
 import com.novaops.backend.common.security.CurrentSession;
 import com.novaops.backend.common.util.IdGenerator;
-import com.novaops.backend.kb.dto.RetrievalChunk;
-import com.novaops.backend.kb.dto.RetrievalResult;
-import com.novaops.backend.kb.service.KbRetrievalService;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
-import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import reactor.core.Disposable;
 
 @Service
 public class AgentService {
-
-  private static final String REFUSAL = "知识库中暂无相关内容，我无法基于可靠资料回答这个问题。";
-  private static final String SYSTEM = "你是 NovaOps 企业知识助手。只能依据提供的知识库资料回答；每个事实论断必须标注对应引用编号如 [1]；不得使用资料外知识；资料不足时明确说不知道。";
+  private static final String DEFAULT_ERROR = "智能问答服务暂不可用，请稍后重试。";
 
   private final AgentMapper mapper;
-  private final KbRetrievalService retrievalService;
-  private final ChatClient chatClient;
-  private final CitationValidator validator;
+  private final AgentWorkflowOrchestrator orchestrator;
   private final AgentPlanner planner;
   private final ObjectMapper objectMapper;
+  private final Executor taskExecutor;
   private final long timeout;
-  private final int topK;
-  private final double minScore;
 
   public AgentService(
       AgentMapper mapper,
-      KbRetrievalService retrievalService,
-      ChatClient.Builder builder,
-      CitationValidator validator,
+      AgentWorkflowOrchestrator orchestrator,
       AgentPlanner planner,
       ObjectMapper objectMapper,
-      @Value("${app.agent.sse-timeout-ms:120000}") long timeout,
-      @Value("${app.agent.top-k:5}") int topK,
-      @Value("${app.agent.min-score:0.55}") double minScore) {
+      @Qualifier("agentTaskExecutor") Executor taskExecutor,
+      @Value("${app.agent.sse-timeout-ms:120000}") long timeout) {
     this.mapper = mapper;
-    this.retrievalService = retrievalService;
-    this.chatClient = builder.build();
-    this.validator = validator;
+    this.orchestrator = orchestrator;
     this.planner = planner;
     this.objectMapper = objectMapper;
+    this.taskExecutor = taskExecutor;
     this.timeout = timeout;
-    this.topK = topK;
-    this.minScore = minScore;
   }
 
   public SseEmitter chat(CurrentSession session, ChatRequest request) {
     SseEmitter emitter = new SseEmitter(timeout);
-    AtomicReference<Disposable> upstream = new AtomicReference<>();
-    emitter.onCompletion(() -> dispose(upstream));
+    AtomicReference<CompletableFuture<Void>> upstream = new AtomicReference<>();
+    emitter.onCompletion(() -> cancel(upstream));
     emitter.onTimeout(() -> {
-      dispose(upstream);
+      cancel(upstream);
       emitter.complete();
     });
-    emitter.onError(error -> dispose(upstream));
+    emitter.onError(error -> cancel(upstream));
 
     ConversationRecord conversation = resolveConversation(session, request);
+    List<ConversationTurn> history = recentHistory(mapper.listMessages(conversation.getId()));
     saveMessage(conversation.getId(), "user", request.getContent(), null, null);
-    AgentPlanDto plan = planner.plan(request.getContent());
-    String searchQuery = plan.steps().stream()
-        .filter(step -> "search_kb".equals(step.action()))
-        .map(AgentPlanStepDto::query)
-        .filter(query -> query != null && !query.isBlank())
-        .findFirst()
-        .orElse(request.getContent());
-    try {
-      send(emitter, "plan", conversation.getId(), Map.of("steps", plan.steps()));
-      sendStep(emitter, conversation.getId(), "search_kb", "running", Map.of());
-    } catch (IOException exception) {
-      emitter.completeWithError(exception);
-      return emitter;
-    }
-
-    RetrievalResult retrieval;
-    try {
-      retrieval = retrievalService.retrieve(searchQuery, topK, minScore);
-    } catch (Exception exception) {
-      trySendStep(emitter, conversation.getId(), "search_kb", "failed",
-          Map.of("message", "知识库服务暂不可用"));
-      completeFixed(emitter, conversation.getId(), "知识库服务暂不可用，请稍后重试。", false,
-          "vector_store_unavailable", List.of());
-      return emitter;
-    }
-
-    try {
-      sendStep(emitter, conversation.getId(), "search_kb", "done",
-          Map.of("query", searchQuery, "count", retrieval.chunks().size(),
-              "topChunks", summarizeChunks(retrieval.chunks())));
-    } catch (IOException exception) {
-      emitter.completeWithError(exception);
-      return emitter;
-    }
-    if (retrieval.isEmpty()) {
-      completeFixed(emitter, conversation.getId(), REFUSAL, true, "no_reliable_context", List.of());
-      return emitter;
-    }
-
-    String prompt = buildPrompt(request.getContent(), retrieval.chunks());
-    StringBuilder buffer = new StringBuilder();
     long started = System.currentTimeMillis();
+
+    CompletableFuture<Void> task;
     try {
-      sendStep(emitter, conversation.getId(), "answer", "running", Map.of());
-    } catch (IOException exception) {
-      emitter.completeWithError(exception);
+      task = CompletableFuture.runAsync(() -> {
+        try {
+          var route = orchestrator.route(request.getContent(), history);
+          send(emitter, "route", conversation.getId(), Map.of(
+              "route", route.route().name(),
+              "reason", route.reason()));
+          AgentPlanDto plan = planForRoute(planner.plan(request.getContent()), route.route());
+          send(emitter, "plan", conversation.getId(), Map.of("steps", plan.steps()));
+          List<AgentPlanStepDto> steps = plan.steps();
+          if (!steps.isEmpty()) {
+            sendStep(emitter, conversation.getId(), steps.get(0).action(), "running", Map.of());
+          }
+          WorkflowResult result = orchestrator.execute(request.getContent(), history, route);
+          sendStepResults(emitter, conversation.getId(), steps, result);
+          sendResult(emitter, conversation.getId(), result, started);
+        } catch (Exception ex) {
+          sendError(emitter, conversation.getId(), DEFAULT_ERROR);
+        }
+      }, taskExecutor);
+    } catch (RejectedExecutionException ex) {
+      sendError(emitter, conversation.getId(), DEFAULT_ERROR);
       return emitter;
     }
-    Disposable disposable = chatClient.prompt()
-        .system(SYSTEM)
-        .user(prompt)
-        .stream()
-        .content()
-        .subscribe(
-            buffer::append,
-            error -> {
-              trySendStep(emitter, conversation.getId(), "answer", "failed",
-                  Map.of("message", "模型服务暂不可用"));
-              sendError(emitter, conversation.getId(), "模型服务暂不可用，请稍后重试。");
-            },
-            () -> finishGenerated(
-                emitter,
-                conversation.getId(),
-                prompt,
-                buffer.toString(),
-                retrieval.chunks(),
-                started));
-    upstream.set(disposable);
+    upstream.set(task);
     return emitter;
   }
 
@@ -156,6 +106,54 @@ public class AgentService {
       throw new BusinessException(404, "会话不存在");
     }
     return new ConversationDetailResponse(conversation, mapper.listMessages(id));
+  }
+
+  private AgentPlanDto planForRoute(AgentPlanDto plan, QueryRoute route) {
+    List<AgentPlanStepDto> source = plan == null || plan.steps() == null ? List.of() : plan.steps();
+    List<AgentPlanStepDto> adapted = new ArrayList<>();
+    for (AgentPlanStepDto step : source) {
+      if (route == QueryRoute.CHAT && !"answer".equals(step.action())) {
+        continue;
+      }
+      if (route == QueryRoute.METADATA && "validate".equals(step.action())) {
+        continue;
+      }
+      if (route == QueryRoute.METADATA && "search_kb".equals(step.action())) {
+        adapted.add(new AgentPlanStepDto(step.action(), "检索文档元数据", step.query(), step.reason(), step.status()));
+        continue;
+      }
+      adapted.add(step);
+    }
+    if (adapted.isEmpty()) {
+      adapted.add(new AgentPlanStepDto("answer", "生成回答", null, "组织回答", "pending"));
+    }
+    return new AgentPlanDto(List.copyOf(adapted));
+  }
+
+  private void sendStepResults(
+      SseEmitter emitter,
+      String conversationId,
+      List<AgentPlanStepDto> steps,
+      WorkflowResult result) throws IOException {
+    for (int index = 0; index < steps.size(); index++) {
+      AgentPlanStepDto step = steps.get(index);
+      if (index > 0) {
+        sendStep(emitter, conversationId, step.action(), "running", Map.of());
+      }
+      sendStep(emitter, conversationId, step.action(), "done", stepPayload(step.action(), result));
+    }
+  }
+
+  private Map<String, ?> stepPayload(String action, WorkflowResult result) {
+    return switch (action) {
+      case "search_kb" -> result.retrievalExecuted()
+          ? Map.of("count", result.retrievedCount())
+          : Map.of();
+      case "validate" -> Map.of(
+          "passed", result.validationStatus() == ValidationStatus.PASSED,
+          "reason", result.validationReason());
+      default -> Map.of("characterCount", result.answer().length());
+    };
   }
 
   private ConversationRecord resolveConversation(CurrentSession session, ChatRequest request) {
@@ -174,100 +172,42 @@ public class AgentService {
     return mapper.findConversation(session.getUserId(), record.getId());
   }
 
-  private String buildPrompt(String question, List<RetrievalChunk> chunks) {
-    StringBuilder context = new StringBuilder("知识库资料：\n");
-    for (int i = 0; i < chunks.size(); i++) {
-      context.append('[').append(i + 1).append("] 来源：")
-          .append(chunks.get(i).documentName()).append('\n')
-          .append(chunks.get(i).content()).append("\n\n");
-    }
-    return context.append("用户问题：").append(question).toString();
+  private List<ConversationTurn> recentHistory(List<AgentMessageRecord> messages) {
+    int start = Math.max(0, messages.size() - 8);
+    return messages.subList(start, messages.size()).stream()
+        .map(message -> new ConversationTurn(message.getRole(), message.getContent()))
+        .toList();
   }
 
-  private void finishGenerated(
-      SseEmitter emitter,
-      String conversationId,
-      String prompt,
-      String initialAnswer,
-      List<RetrievalChunk> chunks,
-      long started) {
-    try {
-      sendStep(emitter, conversationId, "answer", "done",
-          Map.of("characterCount", initialAnswer.length()));
-      sendStep(emitter, conversationId, "validate", "running", Map.of());
-      String answer = initialAnswer;
-      CitationValidator.ValidationResult validation = validator.validate(answer, chunks);
-      if (!validation.passed()) {
-        String retry = chatClient.prompt()
-            .system(SYSTEM + " 上一次回答未通过引用校验。请重新回答并确保每个论断引用真实编号。")
-            .user(prompt)
-            .call()
-            .content();
-        CitationValidator.ValidationResult second = validator.validate(retry, chunks);
-        answer = second.passed() ? retry : retry + "\n\n⚠ 该回答未通过知识库依据校验，仅供参考";
-        validation = second;
-      }
-      List<CitationDto> citations = validation.citationIndexes().stream()
-          .sorted()
-          .map(index -> {
-            RetrievalChunk chunk = chunks.get(index - 1);
-            return new CitationDto(index, chunk.documentId(), chunk.documentName(), chunk.chunkId(),
-                chunk.content(), chunk.score());
-          })
-          .toList();
-      sendStep(emitter, conversationId, "validate", "done",
-          Map.of("passed", validation.passed(), "reason", validation.reason()));
-      sendChunks(emitter, conversationId, answer);
-      send(emitter, "citation", conversationId, Map.of("citations", citations));
-      send(emitter, "meta", conversationId,
-          Map.of("validationPassed", validation.passed(), "validationReason", validation.reason(),
-              "elapsedMs", System.currentTimeMillis() - started));
-      saveMessage(conversationId, "assistant", answer, citations, validation.passed());
-      mapper.touchConversation(conversationId);
-      send(emitter, "done", conversationId, Map.of());
-      emitter.complete();
-    } catch (Exception exception) {
-      trySendStep(emitter, conversationId, "validate", "failed",
-          Map.of("message", "回答校验失败"));
-      sendError(emitter, conversationId, "回答校验失败，请稍后重试。");
-    }
+  private void sendResult(SseEmitter emitter, String conversationId, WorkflowResult result, long started)
+      throws IOException {
+    sendChunks(emitter, conversationId, result.answer());
+    send(emitter, "citation", conversationId, Map.of("citations", result.citations()));
+    send(emitter, "evidence", conversationId, Map.of("evidence", result.evidence()));
+    send(emitter, "meta", conversationId, Map.of(
+        "retrievalExecuted", result.retrievalExecuted(),
+        "retrievedCount", result.retrievedCount(),
+        "validatedCount", result.validatedCount(),
+        "validationStatus", result.validationStatus().name(),
+        "validationReason", result.validationReason(),
+        "elapsedMs", System.currentTimeMillis() - started));
+    saveMessage(
+        conversationId,
+        "assistant",
+        result.answer(),
+        result.citations(),
+        persistedValidation(result.validationStatus()));
+    mapper.touchConversation(conversationId);
+    send(emitter, "done", conversationId, Map.of());
+    emitter.complete();
   }
 
-  private void completeFixed(
-      SseEmitter emitter,
-      String conversationId,
-      String answer,
-      boolean validated,
-      String reason,
-      List<CitationDto> citations) {
-    try {
-      sendStep(emitter, conversationId, "answer", "running", Map.of());
-      sendStep(emitter, conversationId, "answer", "done", Map.of("characterCount", answer.length()));
-      sendStep(emitter, conversationId, "validate", "running", Map.of());
-      sendStep(emitter, conversationId, "validate", "done",
-          Map.of("passed", validated, "reason", reason));
-      sendChunks(emitter, conversationId, answer);
-      send(emitter, "citation", conversationId, Map.of("citations", citations));
-      send(emitter, "meta", conversationId,
-          Map.of("validationPassed", validated, "validationReason", reason));
-      saveMessage(conversationId, "assistant", answer, citations, validated);
-      mapper.touchConversation(conversationId);
-      send(emitter, "done", conversationId, Map.of());
-      emitter.complete();
-    } catch (Exception exception) {
-      emitter.completeWithError(exception);
-    }
-  }
-
-  private List<Map<String, Object>> summarizeChunks(List<RetrievalChunk> chunks) {
-    List<Map<String, Object>> summaries = new ArrayList<>();
-    for (RetrievalChunk chunk : chunks) {
-      Map<String, Object> summary = new LinkedHashMap<>();
-      summary.put("documentName", chunk.documentName());
-      summary.put("score", chunk.score());
-      summaries.add(summary);
-    }
-    return summaries;
+  private Boolean persistedValidation(ValidationStatus status) {
+    return switch (status) {
+      case PASSED -> Boolean.TRUE;
+      case FAILED -> Boolean.FALSE;
+      default -> null;
+    };
   }
 
   private void sendChunks(SseEmitter emitter, String conversationId, String answer) throws IOException {
@@ -283,7 +223,7 @@ public class AgentService {
       String action,
       String status,
       Map<String, ?> payload) throws IOException {
-    Map<String, Object> step = new HashMap<>();
+    Map<String, Object> step = new java.util.HashMap<>();
     step.put("action", action);
     step.put("status", status);
     if (!payload.isEmpty()) {
@@ -292,25 +232,9 @@ public class AgentService {
     send(emitter, "step", conversationId, step);
   }
 
-  private void trySendStep(
-      SseEmitter emitter,
-      String conversationId,
-      String action,
-      String status,
-      Map<String, ?> payload) {
-    try {
-      sendStep(emitter, conversationId, action, status, payload);
-    } catch (IOException ignored) {
-      // The stream is already unusable; the completion path releases it.
-    }
-  }
-
-  private void send(
-      SseEmitter emitter,
-      String event,
-      String conversationId,
-      Map<String, ?> payload) throws IOException {
-    HashMap<String, Object> data = new HashMap<>(payload);
+  private void send(SseEmitter emitter, String event, String conversationId, Map<String, ?> payload)
+      throws IOException {
+    java.util.HashMap<String, Object> data = new java.util.HashMap<>(payload);
     data.put("conversationId", conversationId);
     emitter.send(SseEmitter.event().name(event).data(data));
   }
@@ -319,17 +243,12 @@ public class AgentService {
     try {
       send(emitter, "error", conversationId, Map.of("message", message));
       emitter.complete();
-    } catch (IOException exception) {
-      emitter.completeWithError(exception);
+    } catch (IOException ex) {
+      emitter.completeWithError(ex);
     }
   }
 
-  private void saveMessage(
-      String conversationId,
-      String role,
-      String content,
-      Object citations,
-      Boolean passed) {
+  private void saveMessage(String conversationId, String role, String content, Object citations, Boolean passed) {
     AgentMessageRecord record = new AgentMessageRecord();
     record.setId(IdGenerator.randomId("msg"));
     record.setConversationId(conversationId);
@@ -344,10 +263,10 @@ public class AgentService {
     mapper.insertMessage(record);
   }
 
-  private void dispose(AtomicReference<Disposable> reference) {
-    Disposable disposable = reference.get();
-    if (disposable != null && !disposable.isDisposed()) {
-      disposable.dispose();
+  private void cancel(AtomicReference<CompletableFuture<Void>> reference) {
+    CompletableFuture<Void> task = reference.get();
+    if (task != null && !task.isDone()) {
+      task.cancel(true);
     }
   }
 }

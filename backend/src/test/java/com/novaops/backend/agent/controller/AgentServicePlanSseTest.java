@@ -2,9 +2,11 @@ package com.novaops.backend.agent.controller;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -13,19 +15,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novaops.backend.agent.mapper.AgentMapper;
+import com.novaops.backend.agent.model.AgentMessageRecord;
 import com.novaops.backend.agent.model.ConversationRecord;
+import com.novaops.backend.agent.model.QueryRoute;
+import com.novaops.backend.agent.model.RouteDecision;
+import com.novaops.backend.agent.model.ValidationStatus;
+import com.novaops.backend.agent.model.WorkflowResult;
 import com.novaops.backend.agent.service.AgentPlanParser;
 import com.novaops.backend.agent.service.AgentPlanner;
 import com.novaops.backend.agent.service.AgentService;
-import com.novaops.backend.agent.service.CitationValidator;
+import com.novaops.backend.agent.service.AgentWorkflowOrchestrator;
 import com.novaops.backend.common.security.CurrentSession;
 import com.novaops.backend.common.security.RequestContext;
-import com.novaops.backend.kb.dto.RetrievalResult;
-import com.novaops.backend.kb.service.KbRetrievalService;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -49,13 +53,25 @@ class AgentServicePlanSseTest {
       conversation.setTitle(inserted.getTitle());
       return null;
     }).when(mapper).insertConversation(any());
-    when(mapper.findConversation("user-1", "conv-1")).thenReturn(conversation);
     when(mapper.findConversation(any(), any())).thenReturn(conversation);
-    KbRetrievalService retrieval = mock(KbRetrievalService.class);
-    when(retrieval.retrieve(any(), any(Integer.class), any(Double.class)))
-        .thenReturn(new RetrievalResult(List.of()));
-    ChatClient.Builder builder = mock(ChatClient.Builder.class);
-    when(builder.build()).thenReturn(mock(ChatClient.class));
+    when(mapper.listMessages(any())).thenReturn(List.<AgentMessageRecord>of());
+
+    AgentWorkflowOrchestrator orchestrator = mock(AgentWorkflowOrchestrator.class);
+    when(orchestrator.route(anyString(), anyList()))
+        .thenReturn(new RouteDecision(QueryRoute.RAG, "kb_question"));
+    when(orchestrator.execute(anyString(), anyList(), any()))
+        .thenReturn(new WorkflowResult(
+            QueryRoute.RAG,
+            "kb_question",
+            "知识库中暂无相关内容，我无法基于可靠资料回答这个问题。",
+            List.of(),
+            List.of(),
+            true,
+            0,
+            0,
+            ValidationStatus.NO_EVIDENCE,
+            "no_retrieved_chunks"));
+
     AgentPlanner planner = new AgentPlanner(
         question -> """
             {"steps":[
@@ -66,16 +82,15 @@ class AgentServicePlanSseTest {
             """,
         new AgentPlanParser(new ObjectMapper()),
         true);
+
     AgentService service = new AgentService(
         mapper,
-        retrieval,
-        builder,
-        mock(CitationValidator.class),
+        orchestrator,
         planner,
         new ObjectMapper(),
-        120000,
-        5,
-        0.55);
+        Runnable::run,
+        120000);
+
     MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new AgentController(service)).build();
     RequestContext.set(new CurrentSession("user-1", "admin", "Admin"));
 
@@ -87,11 +102,13 @@ class AgentServicePlanSseTest {
         .andReturn();
 
     mockMvc.perform(asyncDispatch(pending))
+        .andExpect(content().string(containsString("event:route")))
         .andExpect(content().string(containsString("event:plan")))
         .andExpect(content().string(containsString("\"action\":\"search_kb\"")))
         .andExpect(content().string(containsString("event:step")))
         .andExpect(content().string(containsString("\"status\":\"running\"")))
-        .andExpect(content().string(containsString("\"status\":\"done\"")));
-    verify(retrieval).retrieve("NovaOps 知识库使用说明", 5, 0.55);
+        .andExpect(content().string(containsString("\"status\":\"done\"")))
+        .andExpect(content().string(containsString("event:done")));
+    verify(orchestrator).execute(anyString(), anyList(), any());
   }
 }

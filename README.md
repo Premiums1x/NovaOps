@@ -8,7 +8,7 @@ NovaOps 是一个面向企业运维场景的运维管理与 RAG 智能问答平�
 - 单身份权限：每个用户绑定一个身份，管理员可维护用户状态、身份和密码。
 - 动态权限：后端下发菜单与权限码，前端实现动态路由和按钮级鉴权。
 - 知识库：支持文档上传、Apache Tika 异步解析、重叠分块、向量化、分块预览、替换与删除。
-- RAG Agent：基于知识库检索生成回答，支持 POST SSE 流式输出、引用校验、历史会话和无依据拒答。
+- 可信问答：问题先由受控 Router 分流到 METADATA / RAG / CHAT；RAG 路径具备查询改写、相关性过滤、真实 chunk 证据、grounding 与 chunkId 引用完整性校验。
 - 运维业务：提供工单、资产、Dashboard 等常见中后台模块。
 - 双运行模式：可完全使用 MSW Mock，也可连接 Spring Boot、MySQL、Qdrant 与 SiliconFlow。
 - 主题与布局：支持亮色/暗色主题、紧凑模式、动态菜单、多标签页和全局 Agent 浮窗。
@@ -148,6 +148,10 @@ SILICONFLOW_EMBEDDING_MODEL=BAAI/bge-m3
 QDRANT_BASE_URL=http://localhost:6333
 QDRANT_COLLECTION=novaops_kb
 NOVAOPS_KB_STORAGE=./data/kb
+NOVAOPS_AGENT_TOP_K=5
+NOVAOPS_AGENT_MIN_SCORE=0.55
+NOVAOPS_AGENT_RETRIEVAL_VALIDATION_MIN_SCORE=0.5
+NOVAOPS_AGENT_METADATA_MAX_DOCUMENTS=200
 ```
 
 不要提交真实密码、API Key 或本地配置文件。
@@ -159,7 +163,7 @@ cd backend
 mvn -gs mvn-settings.xml spring-boot:run
 ```
 
-后端默认地址：`http://127.0.0.1:8080`。
+后端默认地址：`http://127.0.0.1:8090`。
 
 #### 5. 启动前端
 
@@ -168,7 +172,7 @@ npm install
 npm run dev
 ```
 
-Vite 会将 `/api` 代理到 `http://127.0.0.1:8080`。
+Vite 会将 `/api` 代理到 `http://127.0.0.1:8090`。
 
 ## 主要接口
 
@@ -196,17 +200,19 @@ Vite 会将 `/api` 代理到 `http://127.0.0.1:8080`。
 - `GET /api/agent/conversations`
 - `GET /api/agent/conversations/{id}`
 
-Agent 对话会先生成一份可公开展示的 JSON 行动计划，再执行真实的 RAG 流水线。规划调用失败或输出格式不合法时自动回退为固定的“检索知识库 → 生成回答 → 校验引用”计划，不会阻断回答。可通过 `NOVAOPS_AGENT_PLAN_ENABLED=false` 关闭额外规划调用。
+Agent 对话会先返回受控路由结果（`route` 事件），并生成一份可公开展示的 JSON 行动计划（`plan` 事件），再执行真实的处理管线。规划调用失败或输出格式不合法时自动回退为固定的“检索知识库 → 生成回答 → 校验引用”计划，不会阻断回答；计划会按路由裁剪：`METADATA` 只读取文档标题、类型、状态等元数据；`RAG` 才执行向量检索；`CHAT` 不访问知识库。RAG 没有有效证据或回答未通过 grounding / chunkId 完整性校验时会安全拒答。可通过 `NOVAOPS_AGENT_PLAN_ENABLED=false` 关闭额外规划调用。
 
 `POST /api/agent/chat` 的 SSE 事件如下：
 
 | 事件 | 用途 |
 | --- | --- |
-| `plan` | 一次性下发 `steps`，包含 `action/label/query/reason/status` |
+| `route` | 受控路由结果：`METADATA` / `RAG` / `CHAT` 及理由 |
+| `plan` | 一次性下发 `steps`，包含 `action/label/query/reason/status`，已按路由裁剪 |
 | `step` | 按 `action` 更新执行状态：`running/done/failed`，结果摘要放在 `payload` |
 | `delta` | 回答正文增量 |
 | `citation` | 知识库引用列表 |
-| `meta` | 引用校验结果与耗时 |
+| `evidence` | 通过校验的原始检索证据 |
+| `meta` | 检索与校验统计、依据校验结果与耗时 |
 | `done` | 本轮正常完成 |
 | `error` | 本轮失败；包括建会话等流建立前的同步异常 |
 

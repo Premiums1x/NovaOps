@@ -75,4 +75,8 @@ app:
     sse-timeout-ms: ${NOVAOPS_AGENT_SSE_TIMEOUT_MS:120000}
     top-k: ${NOVAOPS_AGENT_TOP_K:5}
     min-score: ${NOVAOPS_AGENT_MIN_SCORE:0.55}
-    validation-score: ${NOVAOPS_AGENT_VALIDATION_SCORE:0.45}
+    retrieval-validation-min-score: ${NOVAOPS_AGENT_RETRIEVAL_VALIDATION_MIN_SCORE:0.5}
+    metadata-max-documents: ${NOVAOPS_AGENT_METADATA_MAX_DOCUMENTS:200}
+    executor-core-size: ${NOVAOPS_AGENT_EXECUTOR_CORE_SIZE:4}
+    executor-max-size: ${NOVAOPS_AGENT_EXECUTOR_MAX_SIZE:12}
+    executor-queue-capacity: ${NOVAOPS_AGENT_EXECUTOR_QUEUE_CAPACITY:100}
