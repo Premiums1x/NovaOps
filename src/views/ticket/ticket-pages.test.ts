@@ -67,7 +67,13 @@ const globalOptions = {
   stubs: { Permission: { template: '<div><slot /></div>' } },
 }
 
-const mountPage = async (path: string, component: typeof TicketList | typeof TicketDetail) => {
+type StubOverrides = Record<string, { template: string }>
+
+const mountPage = async (
+  path: string,
+  component: typeof TicketList | typeof TicketDetail,
+  stubs: StubOverrides = {},
+) => {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path, component }],
@@ -76,7 +82,11 @@ const mountPage = async (path: string, component: typeof TicketList | typeof Tic
   await router.push(target)
   await router.isReady()
   return mount(component, {
-    global: { ...globalOptions, plugins: [antdPlugin, router] },
+    global: {
+      ...globalOptions,
+      plugins: [antdPlugin, router],
+      stubs: { ...globalOptions.stubs, ...stubs },
+    },
   })
 }
 
@@ -209,24 +219,31 @@ describe('ticket pages person contract', () => {
       pageSize: 10,
       total: statuses.length,
     })
-    const wrapper = await mountPage('/ticket/list', TicketList)
+    // 指派/关闭收在"更多"下拉里，且 dropdown 的 overlay 默认懒渲染；
+    // 让 dropdown/menu 在挂载时直接渲染出来，才能按状态断言行内允许的操作
+    const wrapper = await mountPage('/ticket/list', TicketList, {
+      'a-dropdown': { template: '<div><slot /><slot name="overlay" /></div>' },
+      'a-menu': { template: '<ul><slot /></ul>' },
+      'a-menu-item': { template: '<li><slot /></li>' },
+    })
     await flushPromises()
 
-    const rowButtons = (id: string) => {
+    const rowActions = (id: string) => {
       const row = wrapper.findAll('tbody tr').find((item) => item.text().includes(id))
       expect(row).toBeDefined()
-      return row!
-        .findAll('button')
-        .map((button) => button.text().replace(/\s/g, ''))
+      return [
+        ...row!.findAll('button').map((button) => button.text().replace(/\s/g, '')),
+        ...row!.findAll('li').map((item) => item.text().replace(/\s/g, '')),
+      ]
     }
 
-    expect(rowButtons('A-TICKET-0001')).toEqual(expect.arrayContaining(['指派']))
-    expect(rowButtons('A-TICKET-0001')).not.toEqual(expect.arrayContaining(['关闭']))
-    expect(rowButtons('A-TICKET-0002')).not.toEqual(expect.arrayContaining(['指派']))
-    expect(rowButtons('A-TICKET-0002')).toEqual(expect.arrayContaining(['关闭']))
-    expect(rowButtons('A-TICKET-0003')).not.toEqual(expect.arrayContaining(['指派']))
-    expect(rowButtons('A-TICKET-0003')).toEqual(expect.arrayContaining(['关闭']))
-    expect(rowButtons('A-TICKET-0004')).not.toEqual(expect.arrayContaining(['指派']))
-    expect(rowButtons('A-TICKET-0004')).not.toEqual(expect.arrayContaining(['关闭']))
+    expect(rowActions('A-TICKET-0001')).toEqual(expect.arrayContaining(['指派']))
+    expect(rowActions('A-TICKET-0001')).not.toEqual(expect.arrayContaining(['关闭']))
+    expect(rowActions('A-TICKET-0002')).not.toEqual(expect.arrayContaining(['指派']))
+    expect(rowActions('A-TICKET-0002')).toEqual(expect.arrayContaining(['关闭']))
+    expect(rowActions('A-TICKET-0003')).not.toEqual(expect.arrayContaining(['指派']))
+    expect(rowActions('A-TICKET-0003')).toEqual(expect.arrayContaining(['关闭']))
+    expect(rowActions('A-TICKET-0004')).not.toEqual(expect.arrayContaining(['指派']))
+    expect(rowActions('A-TICKET-0004')).not.toEqual(expect.arrayContaining(['关闭']))
   })
 })
