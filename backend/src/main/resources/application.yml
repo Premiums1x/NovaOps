@@ -71,6 +71,7 @@ app:
     qdrant-collection: ${QDRANT_COLLECTION:novaops_kb}
     qdrant-api-key: ${QDRANT_API_KEY:}
   agent:
+    plan-enabled: ${NOVAOPS_AGENT_PLAN_ENABLED:true}
     sse-timeout-ms: ${NOVAOPS_AGENT_SSE_TIMEOUT_MS:120000}
     top-k: ${NOVAOPS_AGENT_TOP_K:5}
     min-score: ${NOVAOPS_AGENT_MIN_SCORE:0.55}

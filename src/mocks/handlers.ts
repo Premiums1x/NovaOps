@@ -201,8 +201,11 @@ export const handlers = [
     if (shouldPassthroughTicketBackend) return passthrough()
     const session = getSession(request)
     if (!session) return fail(401, 'token 无效')
-    const profile = buildUserProfile(session.username)
-    if (!profile.permissions.includes('asset:claim')) return fail(403, '无权限执行该操作')
+    const allowedPermissions = ['ticket:create', 'ticket:assign', 'ticket:transfer', 'asset:claim']
+    const permissions = buildUserProfile(session.username).permissions
+    if (!allowedPermissions.some((permission) => permissions.includes(permission))) {
+      return fail(403, '无权限执行该操作')
+    }
     return ok(
       listMockUsers()
         .filter((user) => user.enabled)
@@ -263,8 +266,26 @@ export const handlers = [
       : route === 'CHAT'
         ? '你好，我是 Nova AI。你可以问我通用问题，也可以询问知识库中的具体内容。'
         : 'NovaOps 会检索企业知识库，并仅基于通过校验的真实证据回答。'
-    const frames = [`event: route\ndata: ${JSON.stringify({ conversationId, route, reason: 'Mock 受控路由结果' })}\n\n`]
-    frames.push(...[...answer.matchAll(/.{1,12}/gu)].map((match) => `event: delta\ndata: ${JSON.stringify({ conversationId, content: match[0] })}\n\n`))
+    const planSteps = [
+      ...(route !== 'CHAT' ? [{ action: 'search_kb', label: route === 'METADATA' ? '检索文档元数据' : '检索知识库', query: payload.content, reason: '定位与问题相关的知识库资料', status: 'pending' }] : []),
+      { action: 'answer', label: '生成回答', reason: '依据检索结果组织带引用的回答', status: 'pending' },
+      ...(route === 'RAG' ? [{ action: 'validate', label: '校验引用', reason: '核对引用编号与知识库资料是否一致', status: 'pending' }] : []),
+    ]
+    const frames = [
+      `event: route\ndata: ${JSON.stringify({ conversationId, route, reason: 'Mock 受控路由结果' })}\n\n`,
+      `event: plan\ndata: ${JSON.stringify({ conversationId, steps: planSteps })}\n\n`,
+      ...(route !== 'CHAT' ? [
+        `event: step\ndata: ${JSON.stringify({ conversationId, action: 'search_kb', status: 'running' })}\n\n`,
+        `event: step\ndata: ${JSON.stringify({ conversationId, action: 'search_kb', status: 'done', payload: { count: evidence.length } })}\n\n`,
+      ] : []),
+      `event: step\ndata: ${JSON.stringify({ conversationId, action: 'answer', status: 'running' })}\n\n`,
+      ...[...answer.matchAll(/.{1,12}/gu)].map((match) => `event: delta\ndata: ${JSON.stringify({ conversationId, content: match[0] })}\n\n`),
+      `event: step\ndata: ${JSON.stringify({ conversationId, action: 'answer', status: 'done', payload: { characterCount: answer.length } })}\n\n`,
+      ...(route === 'RAG' ? [
+        `event: step\ndata: ${JSON.stringify({ conversationId, action: 'validate', status: 'running' })}\n\n`,
+        `event: step\ndata: ${JSON.stringify({ conversationId, action: 'validate', status: 'done', payload: { passed: true, reason: 'grounding_and_citation_integrity_passed' } })}\n\n`,
+      ] : []),
+    ]
     frames.push(`event: citation\ndata: ${JSON.stringify({ conversationId, citations: evidence })}\n\n`)
     frames.push(`event: evidence\ndata: ${JSON.stringify({ conversationId, evidence })}\n\n`)
     frames.push(`event: meta\ndata: ${JSON.stringify({ conversationId, retrievalExecuted: route === 'RAG', retrievedCount: evidence.length, validatedCount: evidence.length, validationStatus: route === 'RAG' ? 'PASSED' : 'NOT_APPLICABLE', validationReason: route === 'RAG' ? 'grounding_and_citation_integrity_passed' : 'retrieval_not_required' })}\n\n`)

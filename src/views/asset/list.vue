@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import dayjs from 'dayjs'
 import { message, Modal } from 'ant-design-vue'
 import type { TableProps } from 'ant-design-vue'
+import { DownOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import ProTable from '@/components/pro-table/index.vue'
 import { getUserOptionsApi } from '@/api/auth'
@@ -86,14 +87,14 @@ const typeTextMap: Record<AssetType, string> = {
 }
 
 const columns: TableProps['columns'] = [
-  { title: '资产编号', dataIndex: 'assetNo', key: 'assetNo', width: 160 },
-  { title: '资产名称', dataIndex: 'name', key: 'name', width: 220, ellipsis: true },
-  { title: '类型', dataIndex: 'type', key: 'type', width: 120 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 120 },
-  { title: '领用人', dataIndex: 'ownerName', key: 'ownerName', width: 140 },
-  { title: '位置', dataIndex: 'location', key: 'location', width: 180, ellipsis: true },
-  { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 180 },
-  { title: '操作', key: 'actions', fixed: 'right', width: 300 },
+  { title: '资产编号', dataIndex: 'assetNo', key: 'assetNo', width: 140 },
+  { title: '资产名称', dataIndex: 'name', key: 'name', width: 200, ellipsis: true },
+  { title: '类型', dataIndex: 'type', key: 'type', width: 100 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '领用人', dataIndex: 'ownerName', key: 'ownerName', width: 120 },
+  { title: '位置', dataIndex: 'location', key: 'location', width: 160, ellipsis: true },
+  { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 160 },
+  { title: '操作', key: 'actions', fixed: 'right', width: 160 },
 ]
 
 const buildQuery = (): AssetListQueryDto => ({
@@ -287,6 +288,7 @@ onMounted(() => {
 <template>
   <section class="asset-list-page">
     <ProTable
+      header-title="资产列表"
       :columns="columns"
       :data-source="list"
       :loading="loading"
@@ -297,27 +299,49 @@ onMounted(() => {
       @update:page-size="handlePageSizeChange"
     >
       <template #filters>
-        <a-form layout="inline">
-          <a-form-item label="状态">
-            <a-select v-model:value="filters.status" allow-clear style="width: 140px" :options="statusOptions" />
-          </a-form-item>
-          <a-form-item label="类型">
-            <a-select v-model:value="filters.type" allow-clear style="width: 140px" :options="typeOptions" />
-          </a-form-item>
-          <a-form-item>
-            <a-input
-              v-model:value="filters.keyword"
-              allow-clear
-              style="width: 220px"
-              placeholder="编号/名称/位置/领用人"
-            />
-          </a-form-item>
-          <a-form-item>
+        <a-form layout="horizontal" :label-col="{ style: { width: '70px' } }">
+          <a-row :gutter="[24, 16]">
+            <a-col :xs="24" :sm="12" :md="8" :lg="8">
+              <a-form-item label="资产状态" style="margin-bottom: 0;">
+                <a-select
+                  v-model:value="filters.status"
+                  allow-clear
+                  placeholder="请选择状态"
+                  style="width: 100%;"
+                  :options="statusOptions"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="12" :md="8" :lg="8">
+              <a-form-item label="资产类型" style="margin-bottom: 0;">
+                <a-select
+                  v-model:value="filters.type"
+                  allow-clear
+                  placeholder="请选择类型"
+                  style="width: 100%;"
+                  :options="typeOptions"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="12" :md="8" :lg="8">
+              <a-form-item label="关键字" style="margin-bottom: 0;">
+                <a-input
+                  v-model:value="filters.keyword"
+                  allow-clear
+                  style="width: 100%;"
+                  placeholder="编号 / 名称 / 位置 / 领用人"
+                  @press-enter="search"
+                />
+              </a-form-item>
+            </a-col>
+          </a-row>
+
+          <div class="filter-actions-bar">
             <a-space>
               <a-button type="primary" @click="search">查询</a-button>
               <a-button @click="reset">重置</a-button>
             </a-space>
-          </a-form-item>
+          </div>
         </a-form>
       </template>
 
@@ -348,42 +372,45 @@ onMounted(() => {
           {{ dayjs((record as AssetListItemDto).updatedAt).format('YYYY-MM-DD HH:mm') }}
         </template>
         <template v-else-if="column.key === 'actions'">
-          <a-space>
+          <a-space :size="4">
             <a-button type="link" size="small" @click="toDetail((record as AssetListItemDto).id)">详情</a-button>
             <Permission code="asset:edit">
               <a-button type="link" size="small" @click="openEdit(record as AssetListItemDto)">编辑</a-button>
             </Permission>
-            <Permission code="asset:claim">
-              <a-button
-                type="link"
-                size="small"
-                :disabled="(record as AssetListItemDto).status !== 'stock'"
-                @click="openClaim(record as AssetListItemDto)"
-              >
-                领用
+            <a-dropdown>
+              <a-button type="link" size="small">
+                更多 <DownOutlined style="font-size: 10px;" />
               </a-button>
-            </Permission>
-            <Permission code="asset:claim">
-              <a-button
-                type="link"
-                size="small"
-                :disabled="(record as AssetListItemDto).status !== 'in_use'"
-                @click="receiveAsset(record as AssetListItemDto)"
-              >
-                回收
-              </a-button>
-            </Permission>
-            <Permission code="asset:scrap">
-              <a-button
-                type="link"
-                size="small"
-                danger
-                :disabled="(record as AssetListItemDto).status === 'scrapped'"
-                @click="scrapAsset(record as AssetListItemDto)"
-              >
-                报废
-              </a-button>
-            </Permission>
+              <template #overlay>
+                <a-menu>
+                  <Permission code="asset:claim">
+                    <a-menu-item
+                      :disabled="(record as AssetListItemDto).status !== 'stock'"
+                      @click="openClaim(record as AssetListItemDto)"
+                    >
+                      领用
+                    </a-menu-item>
+                  </Permission>
+                  <Permission code="asset:claim">
+                    <a-menu-item
+                      :disabled="(record as AssetListItemDto).status !== 'in_use'"
+                      @click="receiveAsset(record as AssetListItemDto)"
+                    >
+                      回收
+                    </a-menu-item>
+                  </Permission>
+                  <Permission code="asset:scrap">
+                    <a-menu-item
+                      danger
+                      :disabled="(record as AssetListItemDto).status === 'scrapped'"
+                      @click="scrapAsset(record as AssetListItemDto)"
+                    >
+                      报废
+                    </a-menu-item>
+                  </Permission>
+                </a-menu>
+              </template>
+            </a-dropdown>
           </a-space>
         </template>
       </template>
@@ -451,7 +478,16 @@ onMounted(() => {
 
 <style scoped>
 .asset-list-page {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.filter-actions-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #f0f0f0;
 }
 </style>

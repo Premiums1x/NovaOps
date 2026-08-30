@@ -6,7 +6,8 @@ public class RelatedTicket {
   private String title;
   private String status;
   private String priority;
-  private String assignee;
+  private String assigneeId;
+  private String assigneeName;
 
   public String getId() {
     return id;
@@ -40,11 +41,19 @@ public class RelatedTicket {
     this.priority = priority;
   }
 
-  public String getAssignee() {
-    return assignee;
+  public String getAssigneeId() {
+    return assigneeId;
   }
 
-  public void setAssignee(String assignee) {
-    this.assignee = assignee;
+  public void setAssigneeId(String assigneeId) {
+    this.assigneeId = assigneeId;
+  }
+
+  public String getAssigneeName() {
+    return assigneeName;
+  }
+
+  public void setAssigneeName(String assigneeName) {
+    this.assigneeName = assigneeName;
   }
 }

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
+import { ReloadOutlined } from '@ant-design/icons-vue'
 import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import {
   GridComponent,
@@ -126,26 +127,63 @@ const createTrendOption = (data: DashboardMetricsDto): ECOption => ({
   ],
 })
 
-const createPieOption = (data: DashboardMetricsDto): ECOption => ({
-  textStyle: { color: chartColors().text },
-  tooltip: { trigger: 'item' },
-  legend: {
-    orient: 'vertical',
-    left: 'left',
-    top: 'middle',
+const createPieOption = (data: DashboardMetricsDto): ECOption => {
+  const total = data.categories.reduce((sum, item) => sum + item.value, 0)
+
+  return {
     textStyle: { color: chartColors().text },
-  },
-  series: [
-    {
-      type: 'pie',
-      radius: ['36%', '65%'],
-      center: ['64%', '50%'],
-      label: { formatter: '{b}\n{d}%' },
-      color: [chartColors().primary, '#22c55e', '#f59e0b', '#8b5cf6'],
-      data: data.categories,
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => {
+        return `<div style="font-size: 13px; line-height: 1.6;">
+          <div style="font-weight: 600; margin-bottom: 2px;">${params.marker} ${params.name}</div>
+          <div>工单数量：<b>${params.value} 条</b></div>
+          <div>占比比例：<b>${params.percent}%</b></div>
+        </div>`
+      },
     },
-  ],
-})
+    legend: {
+      orient: 'horizontal',
+      bottom: 0,
+      left: 'center',
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: chartColors().text, fontSize: 12 },
+      formatter: (name: string) => {
+        const item = data.categories.find((c) => c.name === name)
+        const val = item ? item.value : 0
+        const percent = total > 0 ? Math.round((val / total) * 100) : 0
+        return `${name} ${val} (${percent}%)`
+      },
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['45%', '70%'],
+        center: ['50%', '42%'],
+        avoidLabelOverlap: false,
+        label: {
+          show: false,
+        },
+        labelLine: {
+          show: false,
+        },
+        emphasis: {
+          scale: true,
+          scaleSize: 6,
+          label: {
+            show: false,
+          },
+          labelLine: {
+            show: false,
+          },
+        },
+        color: [chartColors().primary, '#22c55e', '#f59e0b', '#8b5cf6'],
+        data: data.categories,
+      },
+    ],
+  }
+}
 
 const createBarOption = (data: DashboardMetricsDto): ECOption => ({
   textStyle: { color: chartColors().text },
@@ -258,6 +296,8 @@ onMounted(() => {
 })
 
 onActivated(() => {
+  // 切回 Dashboard 时自动拉取最新工单统计
+  void fetchMetrics()
   void nextTick(() => {
     resizeAllCharts()
     // 防御性延时：确保 keep-alive 激活和过渡动画结束后准确获取实际容器宽度
@@ -295,6 +335,7 @@ onBeforeUnmount(() => {
           <a-range-picker v-model:value="rangeValue" />
           <a-button @click="applyQuickRange(7)">近7天</a-button>
           <a-button @click="applyQuickRange(30)">近30天</a-button>
+          <a-button :icon="h(ReloadOutlined)" :loading="loading" @click="fetchMetrics">刷新</a-button>
         </a-space>
       </div>
     </a-card>

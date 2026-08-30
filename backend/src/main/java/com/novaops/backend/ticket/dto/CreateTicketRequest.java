@@ -12,7 +12,7 @@ public class CreateTicketRequest {
   private String description;
 
   private String priority;
-  private String assignee;
+  private String assigneeId;
   private String dueDate;
   private List<String> assetIds;
 
@@ -40,12 +40,12 @@ public class CreateTicketRequest {
     this.priority = priority;
   }
 
-  public String getAssignee() {
-    return assignee;
+  public String getAssigneeId() {
+    return assigneeId;
   }
 
-  public void setAssignee(String assignee) {
-    this.assignee = assignee;
+  public void setAssigneeId(String assigneeId) {
+    this.assigneeId = assigneeId;
   }
 
   public String getDueDate() {

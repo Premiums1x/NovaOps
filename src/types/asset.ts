@@ -24,7 +24,8 @@ export interface RelatedTicketDto {
   title: string
   status: TicketStatus
   priority: TicketPriority
-  assignee: string
+  assigneeId?: string
+  assigneeName?: string
 }
 
 export interface AssetDetailDto extends AssetListItemDto {

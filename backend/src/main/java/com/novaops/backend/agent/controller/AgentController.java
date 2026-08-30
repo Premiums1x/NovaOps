@@ -9,6 +9,9 @@ import com.novaops.backend.common.security.RequestContext;
 import com.novaops.backend.common.security.RequirePermission;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +25,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/agent")
 public class AgentController {
 
+  private static final Logger log = LoggerFactory.getLogger(AgentController.class);
   private final AgentService service;
 
   public AgentController(AgentService service) {
@@ -31,7 +35,20 @@ public class AgentController {
   @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
   @RequirePermission("agent:chat")
   public SseEmitter chat(@Valid @RequestBody ChatRequest request) {
-    return service.chat(RequestContext.getRequired(), request);
+    try {
+      return service.chat(RequestContext.getRequired(), request);
+    } catch (Exception exception) {
+      log.error("agent chat failed before SSE stream was established", exception);
+      SseEmitter emitter = new SseEmitter(10000L);
+      try {
+        emitter.send(SseEmitter.event().name("error")
+            .data(Map.of("message", "服务异常，请稍后重试")));
+        emitter.complete();
+      } catch (Exception sendException) {
+        emitter.completeWithError(sendException);
+      }
+      return emitter;
+    }
   }
 
   @GetMapping("/conversations")

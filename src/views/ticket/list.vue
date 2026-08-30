@@ -4,9 +4,10 @@ import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import { message, Modal } from 'ant-design-vue'
 import type { CheckboxOptionType, TableProps } from 'ant-design-vue'
-import { SettingOutlined } from '@ant-design/icons-vue'
+import { DownOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import ProTable from '@/components/pro-table/index.vue'
+import { getUserOptionsApi } from '@/api/auth'
 import {
   createTicketApi,
   getTicketDetailApi,
@@ -22,6 +23,7 @@ import type {
   TicketStatus,
   UpdateTicketDto,
 } from '@/types/ticket'
+import type { UserOptionDto } from '@/types/auth'
 
 defineOptions({
   name: 'TicketList',
@@ -29,7 +31,7 @@ defineOptions({
 
 const router = useRouter()
 const COLUMN_STORAGE_KEY = 'novaops_ticket_columns'
-const DEFAULT_VISIBLE_COLUMNS = ['id', 'title', 'status', 'priority', 'assignee', 'creator', 'updatedAt']
+const DEFAULT_VISIBLE_COLUMNS = ['id', 'title', 'status', 'priority', 'assigneeName', 'creatorName', 'updatedAt']
 
 const loading = ref(false)
 const tableData = ref<TicketListItemDto[]>([])
@@ -54,12 +56,13 @@ const editModalVisible = ref(false)
 const assignModalVisible = ref(false)
 const modalLoading = ref(false)
 const currentRecord = ref<TicketListItemDto | null>(null)
+const assigneeUsers = ref<UserOptionDto[]>([])
 
 const createForm = reactive<CreateTicketDto>({
   title: '',
   description: '',
   priority: 'medium',
-  assignee: '',
+  assigneeId: '',
   dueDate: '',
   assetIds: [],
 })
@@ -68,13 +71,12 @@ const editForm = reactive<UpdateTicketDto>({
   title: '',
   description: '',
   priority: 'medium',
-  assignee: '',
   dueDate: '',
   assetIds: [],
 })
 
 const assignForm = reactive({
-  assignee: '',
+  assigneeId: '',
   remark: '',
 })
 
@@ -99,12 +101,12 @@ const priorityColorMap: Record<TicketPriority, string> = {
   urgent: 'red',
 }
 
-const assigneeOptions = [
-  { label: 'Tom', value: 'Tom' },
-  { label: 'Jerry', value: 'Jerry' },
-  { label: 'Alice', value: 'Alice' },
-  { label: 'Nova Team', value: 'Nova Team' },
-]
+const assigneeOptions = computed(() =>
+  assigneeUsers.value.map((user) => ({
+    label: user.displayName,
+    value: user.id,
+  }))
+)
 
 const restoreVisibleColumns = () => {
   const cache = localStorage.getItem(COLUMN_STORAGE_KEY)
@@ -116,7 +118,11 @@ const restoreVisibleColumns = () => {
     if (!Array.isArray(parsed)) {
       return DEFAULT_VISIBLE_COLUMNS
     }
-    return parsed
+    return parsed.map((key) => {
+      if (key === 'assignee') return 'assigneeName'
+      if (key === 'creator') return 'creatorName'
+      return key
+    })
   } catch {
     return DEFAULT_VISIBLE_COLUMNS
   }
@@ -133,15 +139,15 @@ watch(
 )
 
 const allColumns = [
-  { title: '工单号', dataIndex: 'id', key: 'id', width: 160 },
-  { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true, width: 280 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
-  { title: '优先级', dataIndex: 'priority', key: 'priority', width: 110 },
-  { title: '负责人', dataIndex: 'assignee', key: 'assignee', width: 120 },
-  { title: '创建人', dataIndex: 'creator', key: 'creator', width: 120 },
-  { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 180 },
-  { title: '关联资产', dataIndex: 'assetIds', key: 'assetIds', width: 200 },
-  { title: '操作', key: 'actions', fixed: 'right' as const, width: 260 },
+  { title: '工单号', dataIndex: 'id', key: 'id', width: 140 },
+  { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true, width: 240 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '优先级', dataIndex: 'priority', key: 'priority', width: 90 },
+  { title: '负责人', dataIndex: 'assigneeName', key: 'assigneeName', width: 110 },
+  { title: '创建人', dataIndex: 'creatorName', key: 'creatorName', width: 110 },
+  { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 160 },
+  { title: '关联资产', dataIndex: 'assetIds', key: 'assetIds', width: 160 },
+  { title: '操作', key: 'actions', fixed: 'right' as const, width: 160 },
 ] as NonNullable<TableProps['columns']>
 
 const columnOptions = computed<CheckboxOptionType[]>(() =>
@@ -222,8 +228,8 @@ const exportCsv = () => {
     row.title,
     statusTextMap[row.status],
     priorityTextMap[row.priority],
-    row.assignee,
-    row.creator,
+    row.assigneeName || '',
+    row.creatorName,
     dayjs(row.updatedAt).format('YYYY-MM-DD HH:mm:ss'),
   ])
   const csv = [
@@ -246,7 +252,7 @@ const openCreateModal = () => {
   createForm.title = ''
   createForm.description = ''
   createForm.priority = 'medium'
-  createForm.assignee = ''
+  createForm.assigneeId = ''
   createForm.dueDate = ''
   createForm.assetIds = []
   createModalVisible.value = true
@@ -275,7 +281,6 @@ const openEditModal = async (record: TicketListItemDto) => {
     editForm.title = detail.title
     editForm.description = detail.description
     editForm.priority = detail.priority
-    editForm.assignee = detail.assignee
     editForm.assetIds = [...detail.assetIds]
     editForm.dueDate = detail.dueDate || ''
   } finally {
@@ -303,22 +308,35 @@ const submitEdit = async () => {
 }
 
 const openAssignModal = (record: TicketListItemDto) => {
+  if (record.status !== 'pending') {
+    message.warning('仅待处理的工单可指派')
+    return
+  }
   currentRecord.value = record
-  assignForm.assignee = record.assignee || ''
+  assignForm.assigneeId = record.assigneeId || ''
   assignForm.remark = ''
   assignModalVisible.value = true
 }
 
+const canAssignTicket = (record: TicketListItemDto) => record.status === 'pending'
+
+const canCloseTicket = (record: TicketListItemDto) =>
+  record.status === 'processing' || record.status === 'review'
+
 const submitAssign = async () => {
-  if (!currentRecord.value || !assignForm.assignee) {
+  if (!currentRecord.value || !assignForm.assigneeId) {
     message.warning('请选择指派对象')
+    return
+  }
+  if (!canAssignTicket(currentRecord.value)) {
+    message.warning('仅待处理的工单可指派')
     return
   }
   modalLoading.value = true
   try {
     await ticketActionApi(currentRecord.value.id, {
       action: 'assign',
-      assignee: assignForm.assignee,
+      assigneeId: assignForm.assigneeId,
       remark: assignForm.remark || '列表页指派',
     })
     message.success('指派成功')
@@ -330,6 +348,10 @@ const submitAssign = async () => {
 }
 
 const closeTicket = async (record: TicketListItemDto) => {
+  if (!canCloseTicket(record)) {
+    message.warning('仅处理中或待复核的工单可关闭')
+    return
+  }
   Modal.confirm({
     title: `确认关闭工单 ${record.id}？`,
     content: '关闭后工单状态将变为已完成。',
@@ -354,13 +376,19 @@ const handleCreateAssetInput = (event: Event) => {
 }
 
 onMounted(() => {
-  void fetchTickets()
+  void Promise.all([
+    fetchTickets(),
+    getUserOptionsApi().then((users) => {
+      assigneeUsers.value = users
+    }),
+  ])
 })
 </script>
 
 <template>
   <section class="ticket-list-page">
     <ProTable
+      header-title="工单列表"
       :columns="tableColumns"
       :data-source="tableData"
       :loading="loading"
@@ -371,50 +399,64 @@ onMounted(() => {
       @update:page-size="handlePageSizeChange"
     >
       <template #filters>
-        <a-form layout="inline">
-          <a-form-item label="状态">
-            <a-select
-              v-model:value="searchForm.status"
-              allow-clear
-              style="width: 140px"
-              :options="[
-                { label: '待处理', value: 'pending' },
-                { label: '处理中', value: 'processing' },
-                { label: '待复核', value: 'review' },
-                { label: '已完成', value: 'done' },
-              ]"
-            />
-          </a-form-item>
-          <a-form-item label="优先级">
-            <a-select
-              v-model:value="searchForm.priority"
-              allow-clear
-              style="width: 140px"
-              :options="[
-                { label: '低', value: 'low' },
-                { label: '中', value: 'medium' },
-                { label: '高', value: 'high' },
-                { label: '紧急', value: 'urgent' },
-              ]"
-            />
-          </a-form-item>
-          <a-form-item label="日期范围">
-            <a-range-picker v-model:value="searchForm.dateRange" />
-          </a-form-item>
-          <a-form-item>
-            <a-input
-              v-model:value="searchForm.keyword"
-              placeholder="搜索标题 / 描述关键字"
-              allow-clear
-              style="width: 220px"
-            />
-          </a-form-item>
-          <a-form-item>
+        <a-form layout="horizontal" :label-col="{ style: { width: '70px' } }">
+          <a-row :gutter="[24, 16]">
+            <a-col :xs="24" :sm="12" :md="12" :lg="6">
+              <a-form-item label="状态" style="margin-bottom: 0;">
+                <a-select
+                  v-model:value="searchForm.status"
+                  allow-clear
+                  placeholder="请选择状态"
+                  style="width: 100%;"
+                  :options="[
+                    { label: '待处理', value: 'pending' },
+                    { label: '处理中', value: 'processing' },
+                    { label: '待复核', value: 'review' },
+                    { label: '已完成', value: 'done' },
+                  ]"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="12" :md="12" :lg="6">
+              <a-form-item label="优先级" style="margin-bottom: 0;">
+                <a-select
+                  v-model:value="searchForm.priority"
+                  allow-clear
+                  placeholder="请选择优先级"
+                  style="width: 100%;"
+                  :options="[
+                    { label: '低', value: 'low' },
+                    { label: '中', value: 'medium' },
+                    { label: '高', value: 'high' },
+                    { label: '紧急', value: 'urgent' },
+                  ]"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="12" :md="12" :lg="6">
+              <a-form-item label="关键字" style="margin-bottom: 0;">
+                <a-input
+                  v-model:value="searchForm.keyword"
+                  placeholder="搜索标题 / 描述关键字"
+                  allow-clear
+                  style="width: 100%;"
+                  @press-enter="searchTickets"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="12" :md="12" :lg="6">
+              <a-form-item label="日期范围" style="margin-bottom: 0;">
+                <a-range-picker v-model:value="searchForm.dateRange" style="width: 100%;" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+
+          <div class="filter-actions-bar">
             <a-space>
               <a-button type="primary" @click="searchTickets">查询</a-button>
               <a-button @click="resetFilters">重置</a-button>
             </a-space>
-          </a-form-item>
+          </div>
         </a-form>
       </template>
 
@@ -460,7 +502,7 @@ onMounted(() => {
           </span>
         </template>
         <template v-else-if="column.key === 'actions'">
-          <a-space>
+          <a-space :size="4">
             <a-button type="link" size="small" @click="goDetail((record as TicketListItemDto).id)">
               详情
             </a-button>
@@ -469,22 +511,34 @@ onMounted(() => {
                 编辑
               </a-button>
             </Permission>
-            <Permission code="ticket:assign">
-              <a-button type="link" size="small" @click="openAssignModal(record as TicketListItemDto)">
-                指派
+            <a-dropdown
+              v-if="canAssignTicket(record as TicketListItemDto) || canCloseTicket(record as TicketListItemDto)"
+            >
+              <a-button type="link" size="small">
+                更多 <DownOutlined style="font-size: 10px;" />
               </a-button>
-            </Permission>
-            <Permission code="ticket:close">
-              <a-button
-                type="link"
-                size="small"
-                danger
-                :disabled="(record as TicketListItemDto).status === 'done'"
-                @click="closeTicket(record as TicketListItemDto)"
-              >
-                关闭
-              </a-button>
-            </Permission>
+              <template #overlay>
+                <a-menu>
+                  <Permission code="ticket:assign">
+                    <a-menu-item
+                      v-if="canAssignTicket(record as TicketListItemDto)"
+                      @click="openAssignModal(record as TicketListItemDto)"
+                    >
+                      指派
+                    </a-menu-item>
+                  </Permission>
+                  <Permission code="ticket:close">
+                    <a-menu-item
+                      v-if="canCloseTicket(record as TicketListItemDto)"
+                      danger
+                      @click="closeTicket(record as TicketListItemDto)"
+                    >
+                      关闭
+                    </a-menu-item>
+                  </Permission>
+                </a-menu>
+              </template>
+            </a-dropdown>
           </a-space>
         </template>
       </template>
@@ -515,7 +569,7 @@ onMounted(() => {
           />
         </a-form-item>
         <a-form-item label="负责人">
-          <a-select v-model:value="createForm.assignee" allow-clear :options="assigneeOptions" />
+          <a-select v-model:value="createForm.assigneeId" allow-clear :options="assigneeOptions" />
         </a-form-item>
         <a-form-item label="关联资产 (逗号分隔)">
           <a-input :value="(createForm.assetIds || []).join(',')" @change="handleCreateAssetInput" />
@@ -547,9 +601,6 @@ onMounted(() => {
             ]"
           />
         </a-form-item>
-        <a-form-item label="负责人">
-          <a-select v-model:value="editForm.assignee" allow-clear :options="assigneeOptions" />
-        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -561,7 +612,7 @@ onMounted(() => {
     >
       <a-form layout="vertical">
         <a-form-item label="指派给" required>
-          <a-select v-model:value="assignForm.assignee" :options="assigneeOptions" />
+          <a-select v-model:value="assignForm.assigneeId" :options="assigneeOptions" />
         </a-form-item>
         <a-form-item label="备注">
           <a-textarea v-model:value="assignForm.remark" :rows="3" />
@@ -573,8 +624,17 @@ onMounted(() => {
 
 <style scoped>
 .ticket-list-page {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.filter-actions-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #f0f0f0;
 }
 
 .ticket-link {

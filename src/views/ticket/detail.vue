@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import { message } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getAssetBatchApi } from '@/api/asset'
+import { getUserOptionsApi } from '@/api/auth'
 import {
   createTicketCommentApi,
   getTicketCommentsApi,
@@ -12,6 +13,7 @@ import {
   uploadTicketAttachmentApi,
 } from '@/api/ticket'
 import type { AssetSimpleDto } from '@/types/asset'
+import type { UserOptionDto } from '@/types/auth'
 import type { TicketActionType, TicketCommentDto, TicketDetailDto, TicketStatus } from '@/types/ticket'
 
 defineOptions({
@@ -26,13 +28,20 @@ const commentLoading = ref(false)
 const detail = ref<TicketDetailDto | null>(null)
 const comments = ref<TicketCommentDto[]>([])
 const relatedAssets = ref<AssetSimpleDto[]>([])
+const assigneeUsers = ref<UserOptionDto[]>([])
 const newComment = ref('')
 
 const actionForm = reactive({
-  assignee: '',
-  targetUser: '',
+  assigneeId: '',
   remark: '',
 })
+
+const assigneeOptions = computed(() =>
+  assigneeUsers.value.map((user) => ({
+    label: user.displayName,
+    value: user.id,
+  }))
+)
 
 const statusTextMap: Record<TicketStatus, string> = {
   pending: '待处理',
@@ -42,6 +51,20 @@ const statusTextMap: Record<TicketStatus, string> = {
 }
 
 const flowSteps: TicketStatus[] = ['pending', 'processing', 'review', 'done']
+
+const allowedActionsByStatus: Record<TicketStatus, readonly TicketActionType[]> = {
+  pending: ['assign'],
+  processing: ['transfer', 'advance', 'close'],
+  review: ['transfer', 'approve', 'reject', 'close'],
+  done: [],
+}
+
+const isActionAvailable = (action: TicketActionType) => {
+  if (!detail.value) {
+    return false
+  }
+  return allowedActionsByStatus[detail.value.status].includes(action)
+}
 
 const currentStep = computed(() => {
   if (!detail.value) {
@@ -87,20 +110,20 @@ const doAction = async (action: TicketActionType) => {
   if (!detail.value) {
     return
   }
-  if (action === 'assign' && !actionForm.assignee) {
-    message.warning('请选择指派对象')
+  if (!isActionAvailable(action)) {
+    message.warning('当前工单状态不可执行此操作')
     return
   }
-  if (action === 'transfer' && !actionForm.targetUser) {
-    message.warning('请填写转派目标人')
+  if ((action === 'assign' || action === 'transfer') && !actionForm.assigneeId) {
+    message.warning('请选择指派对象')
     return
   }
   actionLoading.value = true
   try {
     await ticketActionApi(detail.value.id, {
       action,
-      assignee: actionForm.assignee || undefined,
-      targetUser: actionForm.targetUser || undefined,
+      assigneeId:
+        action === 'assign' || action === 'transfer' ? actionForm.assigneeId : undefined,
       remark: actionForm.remark || undefined,
     })
     message.success('状态流转成功')
@@ -151,7 +174,12 @@ watch(
 )
 
 onMounted(() => {
-  void refreshDetail()
+  void Promise.all([
+    refreshDetail(),
+    getUserOptionsApi().then((users) => {
+      assigneeUsers.value = users
+    }),
+  ])
 })
 </script>
 
@@ -168,9 +196,9 @@ onMounted(() => {
         <a-space>
           <Permission code="ticket:assign">
             <a-button
+              v-if="isActionAvailable('assign')"
               size="small"
               :loading="actionLoading"
-              :disabled="detail?.status === 'done'"
               @click="doAction('assign')"
             >
               指派
@@ -178,9 +206,9 @@ onMounted(() => {
           </Permission>
           <Permission code="ticket:transfer">
             <a-button
+              v-if="isActionAvailable('transfer')"
               size="small"
               :loading="actionLoading"
-              :disabled="detail?.status === 'done'"
               @click="doAction('transfer')"
             >
               转派
@@ -188,18 +216,45 @@ onMounted(() => {
           </Permission>
           <Permission code="ticket:close">
             <a-button
+              v-if="isActionAvailable('close')"
               size="small"
               danger
               :loading="actionLoading"
-              :disabled="detail?.status === 'done'"
               @click="doAction('close')"
             >
               关闭
             </a-button>
           </Permission>
           <Permission code="ticket:advance">
-            <a-button size="small" :loading="actionLoading" @click="doAction('advance')">推进状态</a-button>
-            <a-button size="small" :loading="actionLoading" @click="doAction('reject')">驳回</a-button>
+            <a-button
+              v-if="isActionAvailable('advance')"
+              size="small"
+              :loading="actionLoading"
+              @click="doAction('advance')"
+            >
+              提交复核
+            </a-button>
+          </Permission>
+          <Permission code="ticket:approve">
+            <a-button
+              v-if="isActionAvailable('approve')"
+              size="small"
+              type="primary"
+              :loading="actionLoading"
+              @click="doAction('approve')"
+            >
+              复核通过
+            </a-button>
+          </Permission>
+          <Permission code="ticket:reject">
+            <a-button
+              v-if="isActionAvailable('reject')"
+              size="small"
+              :loading="actionLoading"
+              @click="doAction('reject')"
+            >
+              驳回
+            </a-button>
           </Permission>
         </a-space>
       </template>
@@ -217,8 +272,8 @@ onMounted(() => {
           <a-tag color="geekblue">{{ detail ? statusTextMap[detail.status] : '-' }}</a-tag>
         </a-descriptions-item>
         <a-descriptions-item label="优先级">{{ detail?.priority }}</a-descriptions-item>
-        <a-descriptions-item label="负责人">{{ detail?.assignee || '-' }}</a-descriptions-item>
-        <a-descriptions-item label="创建人">{{ detail?.creator }}</a-descriptions-item>
+        <a-descriptions-item label="负责人">{{ detail?.assigneeName || '-' }}</a-descriptions-item>
+        <a-descriptions-item label="创建人">{{ detail?.creatorName }}</a-descriptions-item>
         <a-descriptions-item label="更新时间">
           {{ detail?.updatedAt ? dayjs(detail.updatedAt).format('YYYY-MM-DD HH:mm:ss') : '-' }}
         </a-descriptions-item>
@@ -249,7 +304,7 @@ onMounted(() => {
                 {{ item.action }}
                 <span class="timeline-time">{{ dayjs(item.createdAt).format('YYYY-MM-DD HH:mm:ss') }}</span>
               </div>
-              <div>执行人：{{ item.operator }}</div>
+              <div>执行人：{{ item.operatorName || '-' }}</div>
               <div v-if="item.fromStatus && item.toStatus">
                 状态：{{ statusTextMap[item.fromStatus] }} -> {{ statusTextMap[item.toStatus] }}
               </div>
@@ -261,20 +316,12 @@ onMounted(() => {
       <a-col :span="10">
         <a-card title="状态操作" :bordered="false">
           <a-form layout="vertical">
-            <a-form-item label="指派给">
+            <a-form-item label="指派 / 转派给">
               <a-select
-                v-model:value="actionForm.assignee"
+                v-model:value="actionForm.assigneeId"
                 allow-clear
-                :options="[
-                  { value: 'Tom', label: 'Tom' },
-                  { value: 'Jerry', label: 'Jerry' },
-                  { value: 'Alice', label: 'Alice' },
-                  { value: 'Nova Team', label: 'Nova Team' },
-                ]"
+                :options="assigneeOptions"
               />
-            </a-form-item>
-            <a-form-item label="转派目标人">
-              <a-input v-model:value="actionForm.targetUser" placeholder="例如：oncall.bob" />
             </a-form-item>
             <a-form-item label="备注">
               <a-textarea v-model:value="actionForm.remark" :rows="3" placeholder="填写 reject/transfer 说明" />
@@ -291,7 +338,7 @@ onMounted(() => {
             <template #renderItem="{ item }">
               <a-list-item>
                 <a-comment
-                  :author="item.author"
+                  :author="item.authorName"
                   :content="item.content"
                   :datetime="dayjs(item.createdAt).format('YYYY-MM-DD HH:mm:ss')"
                 />

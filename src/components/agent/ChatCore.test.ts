@@ -97,4 +97,41 @@ describe('ChatCore', () => {
     expect(wrapper.text()).toContain('pnpm add package')
     expect(wrapper.text()).toContain('检索 2 条 · 有效 1 条')
   })
+
+  it('renders a collapsible execution summary for assistant plan steps', async () => {
+    store.messages = [
+      {
+        id: 'assistant-plan',
+        role: 'assistant',
+        content: '回答内容',
+        reasoningExpanded: true,
+        steps: [
+          { action: 'search_kb', label: '检索知识库', reason: '查找资料', status: 'done', payload: { count: 3 } },
+          { action: 'answer', label: '生成回答', reason: '组织答案', status: 'running' },
+        ],
+      },
+    ] as Array<Record<string, unknown> & { id: string; role: 'user' | 'assistant'; content: string }>
+    const wrapper = mount(ChatCore, {
+      global: {
+        stubs: {
+          'a-collapse': { template: '<div class="collapse-stub"><slot /></div>' },
+          'a-collapse-panel': { template: '<div><slot name="header"/><slot /></div>' },
+          'a-steps': {
+            props: ['items'],
+            template: '<div class="steps-stub"><div v-for="item in items" :key="item.key">{{ item.title }} {{ item.description }}</div></div>',
+          },
+          'a-tag': true,
+          'a-alert': true,
+          UserOutlined: true,
+          RobotOutlined: true,
+        },
+      },
+    })
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(wrapper.get('.reasoning-panel').text()).toContain('执行过程')
+    expect(wrapper.get('.steps-stub').text()).toContain('检索知识库')
+    expect(wrapper.get('.steps-stub').text()).toContain('检索到 3 条资料')
+  })
 })
