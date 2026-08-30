@@ -200,7 +200,7 @@ Vite 会将 `/api` 代理到 `http://127.0.0.1:8090`。
 - `GET /api/agent/conversations`
 - `GET /api/agent/conversations/{id}`
 
-Agent 对话会先返回受控路由结果（`route` 事件），并生成一份可公开展示的 JSON 行动计划（`plan` 事件），再执行真实的处理管线。规划调用失败或输出格式不合法时自动回退为固定的“检索知识库 → 生成回答 → 校验引用”计划，不会阻断回答；计划会按路由裁剪：`METADATA` 只读取文档标题、类型、状态等元数据；`RAG` 才执行向量检索；`CHAT` 不访问知识库。RAG 没有有效证据或回答未通过 grounding / chunkId 完整性校验时会安全拒答。可通过 `NOVAOPS_AGENT_PLAN_ENABLED=false` 关闭额外规划调用。
+Agent 对话会先返回受控路由结果（`route` 事件），并生成一份可公开展示的行动计划（`plan` 事件），再执行真实的处理管线。只有 `RAG` 路由会调用规划模型生成计划，失败或输出格式不合法时自动回退为固定的“检索知识库 → 生成回答 → 校验引用”计划，不会阻断回答；`METADATA` 只读取文档标题、类型、状态等元数据（不执行向量检索），`CHAT` 不访问知识库，两者使用固定计划。RAG 没有有效证据或回答未通过 grounding / chunkId 完整性校验时会安全拒答；会话首轮没有可补全的指代时也会跳过检索词改写调用。可通过 `NOVAOPS_AGENT_PLAN_ENABLED=false` 关闭额外规划调用。
 
 `POST /api/agent/chat` 的 SSE 事件如下：
 

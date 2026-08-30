@@ -14,7 +14,6 @@ import com.novaops.backend.common.exception.BusinessException;
 import com.novaops.backend.common.security.CurrentSession;
 import com.novaops.backend.common.util.IdGenerator;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -75,7 +74,7 @@ public class AgentService {
           send(emitter, "route", conversation.getId(), Map.of(
               "route", route.route().name(),
               "reason", route.reason()));
-          AgentPlanDto plan = planForRoute(planner.plan(request.getContent()), route.route());
+          AgentPlanDto plan = buildPlan(request.getContent(), route.route());
           send(emitter, "plan", conversation.getId(), Map.of("steps", plan.steps()));
           List<AgentPlanStepDto> steps = plan.steps();
           if (!steps.isEmpty()) {
@@ -108,26 +107,19 @@ public class AgentService {
     return new ConversationDetailResponse(conversation, mapper.listMessages(id));
   }
 
-  private AgentPlanDto planForRoute(AgentPlanDto plan, QueryRoute route) {
-    List<AgentPlanStepDto> source = plan == null || plan.steps() == null ? List.of() : plan.steps();
-    List<AgentPlanStepDto> adapted = new ArrayList<>();
-    for (AgentPlanStepDto step : source) {
-      if (route == QueryRoute.CHAT && !"answer".equals(step.action())) {
-        continue;
-      }
-      if (route == QueryRoute.METADATA && "validate".equals(step.action())) {
-        continue;
-      }
-      if (route == QueryRoute.METADATA && "search_kb".equals(step.action())) {
-        adapted.add(new AgentPlanStepDto(step.action(), "检索文档元数据", step.query(), step.reason(), step.status()));
-        continue;
-      }
-      adapted.add(step);
+  // 仅 RAG 路由需要规划模型生成展示计划；METADATA/CHAT 的步骤是固定的，
+  // 直接给出确定性计划，省掉对这两类问题毫无收益的一次模型调用
+  private AgentPlanDto buildPlan(String question, QueryRoute route) {
+    if (route == QueryRoute.RAG) {
+      return planner.plan(question);
     }
-    if (adapted.isEmpty()) {
-      adapted.add(new AgentPlanStepDto("answer", "生成回答", null, "组织回答", "pending"));
+    if (route == QueryRoute.METADATA) {
+      return new AgentPlanDto(List.of(
+          new AgentPlanStepDto("search_kb", "检索文档元数据", null, "汇总知识库文档元数据", "pending"),
+          new AgentPlanStepDto("answer", "生成回答", null, "依据文档元数据组织回答", "pending")));
     }
-    return new AgentPlanDto(List.copyOf(adapted));
+    return new AgentPlanDto(List.of(
+        new AgentPlanStepDto("answer", "生成回答", null, "直接回答通用问题", "pending")));
   }
 
   private void sendStepResults(
@@ -245,6 +237,8 @@ public class AgentService {
       emitter.complete();
     } catch (IOException ex) {
       emitter.completeWithError(ex);
+    } catch (Exception ex) {
+      // 流已被超时/取消结束后再发送会抛 IllegalStateException，此时无需也无法补偿错误事件
     }
   }
 

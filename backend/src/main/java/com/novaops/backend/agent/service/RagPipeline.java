@@ -112,6 +112,10 @@ public class RagPipeline {
   }
 
   private String rewriteOrOriginal(String question, List<ConversationTurn> history) {
+    // 无会话历史就没有指代可补全，改写只会原样返回，直接跳过这次模型调用
+    if (history == null || history.isEmpty()) {
+      return question;
+    }
     try {
       String rewritten = modelGateway.rewrite(question, history);
       return rewritten == null || rewritten.isBlank() ? question : rewritten.trim();

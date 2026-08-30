@@ -17,12 +17,13 @@ const KNOWN_EVENTS: AgentSseEvent[] = [
 
 const parseFrame = (frame: string) => {
   let event = 'message'
-  let data = ''
+  const dataLines: string[] = []
   for (const line of frame.split('\n')) {
     if (line.startsWith('event:')) event = line.slice(6).trim()
-    if (line.startsWith('data:')) data += line.slice(5).trim()
+    if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
   }
-  return { event, data }
+  //SSE 规范要求多行 data 以换行拼接，JSON 载荷通常是单行，但网关可能拆行
+  return { event, data: dataLines.join('\n') }
 }
 
 export const streamSse = async (

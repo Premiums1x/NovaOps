@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.novaops.backend.agent.model.ChunkRelevance;
+import com.novaops.backend.agent.model.ConversationTurn;
 import com.novaops.backend.agent.model.GeneratedAnswer;
 import com.novaops.backend.agent.model.GroundingDecision;
 import com.novaops.backend.agent.model.QueryRoute;
@@ -75,6 +76,19 @@ class RagPipelineTest {
     assertEquals("chunk-12", outcome.response().citations().get(0).chunkId());
     assertTrue(outcome.state().citationIntegrityPassed());
     assertTrue(outcome.state().groundingPassed());
+  }
+
+  @Test
+  void skipsQueryRewriteWithoutConversationHistory() {
+    when(retriever.retrieve(anyString(), anyInt(), anyDouble()))
+        .thenReturn(new RetrievalResult(List.of()));
+
+    pipeline.execute("怎么安装？", List.of(), route);
+    verify(gateway, never()).rewrite(anyString(), anyList());
+
+    var history = List.of(new ConversationTurn("user", "上一轮的问题"));
+    pipeline.execute("那这个呢？", history, route);
+    verify(gateway).rewrite("那这个呢？", history);
   }
 
   @Test
