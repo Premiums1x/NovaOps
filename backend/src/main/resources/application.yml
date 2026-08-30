@@ -80,3 +80,9 @@ app:
     executor-core-size: ${NOVAOPS_AGENT_EXECUTOR_CORE_SIZE:4}
     executor-max-size: ${NOVAOPS_AGENT_EXECUTOR_MAX_SIZE:12}
     executor-queue-capacity: ${NOVAOPS_AGENT_EXECUTOR_QUEUE_CAPACITY:100}
+    task:
+      max-steps: ${NOVAOPS_AGENT_TASK_MAX_STEPS:10}
+      max-revisions: ${NOVAOPS_AGENT_TASK_MAX_REVISIONS:2}
+      observation-max-chars: ${NOVAOPS_AGENT_TASK_OBSERVATION_MAX_CHARS:2000}
+      step-timeout-seconds: ${NOVAOPS_AGENT_TASK_STEP_TIMEOUT_SECONDS:20}
+      sse-timeout-ms: ${NOVAOPS_AGENT_TASK_SSE_TIMEOUT_MS:0}

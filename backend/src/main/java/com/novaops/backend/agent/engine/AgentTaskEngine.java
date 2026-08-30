@@ -51,6 +51,7 @@ public class AgentTaskEngine {
       ToolRegistry registry,
       TaskModelGateway gateway,
       EngineConfig config,
+      @org.springframework.beans.factory.annotation.Qualifier("agentTaskExecutor")
       Executor toolRunner,
       ObjectMapper objectMapper) {
     this.registry = registry;
@@ -75,8 +76,10 @@ public class AgentTaskEngine {
         state.addOutcome(outcome);
         emit(listener, "step", outcome.seq(), Map.of(
             "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
-            "status", outcome.status(), "observation", outcome.observation()));
-        emit(listener, "audit", outcome.seq(), auditPayload(outcome, false, false));
+            "status", outcome.status(), "observation", outcome.observation(),
+            "args", safeArgs(denied.args())));
+        emit(listener, "audit", outcome.seq(),
+            auditPayload(denied, outcome, false, false));
         ReplanOutcome replan = tryReplan(state, listener, "用户拒绝了一次写操作");
         if (replan == ReplanOutcome.ABORTED) {
           return fail(state, listener, "用户拒绝后无法继续：模型判断剩余目标无法达成");
@@ -155,8 +158,10 @@ public class AgentTaskEngine {
         state.addOutcome(outcome);
         emit(listener, "step", outcome.seq(), Map.of(
             "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
-            "status", outcome.status(), "observation", outcome.observation()));
-        emit(listener, "audit", outcome.seq(), auditPayload(outcome, true, confirmed));
+            "status", outcome.status(), "observation", outcome.observation(),
+            "args", safeArgs(step.args())));
+        emit(listener, "audit", outcome.seq(),
+            auditPayload(step, outcome, true, confirmed));
 
         if (result.status() == ToolResult.Status.FAILED
             || result.status() == ToolResult.Status.EMPTY) {
@@ -219,11 +224,13 @@ public class AgentTaskEngine {
     StepOutcome outcome = new StepOutcome(
         state.nextGlobalSeq(), step.tool(), toolTitle(step.tool()),
         StepOutcome.FAILED, observation, false, false);
-    state.addOutcome(outcome);
-    emit(listener, "step", outcome.seq(), Map.of(
-        "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
-        "status", outcome.status(), "observation", observation));
-    emit(listener, "audit", outcome.seq(), auditPayload(outcome, executed, false));
+        state.addOutcome(outcome);
+        emit(listener, "step", outcome.seq(), Map.of(
+            "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
+            "status", outcome.status(), "observation", observation,
+            "args", safeArgs(step.args())));
+        emit(listener, "audit", outcome.seq(),
+            auditPayload(step, outcome, executed, false));
     ReplanOutcome replan = tryReplan(state, listener, observation);
     return replan != ReplanOutcome.ABORTED;
   }
@@ -282,10 +289,13 @@ public class AgentTaskEngine {
         + " / 失败 " + failed + " / 跳过 " + skipped + "）。";
   }
 
-  private Map<String, Object> auditPayload(StepOutcome outcome, boolean allowed, boolean confirmed) {
+  private Map<String, Object> auditPayload(
+      PlannedStep step, StepOutcome outcome, boolean allowed, boolean confirmed) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("tool", outcome.tool());
+    payload.put("args", safeArgs(step.args()));
     payload.put("status", outcome.status());
+    payload.put("observation", outcome.observation());
     payload.put("write", outcome.write());
     payload.put("confirmed", outcome.confirmed());
     payload.put("allowed", allowed);

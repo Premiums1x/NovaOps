@@ -11,6 +11,7 @@ public class AgentTaskStepRecord {
   private String observationJson;
   private String status;
   private Integer revision;
+  private String createdAt;
 
   public String getId() {
     return id;
@@ -82,5 +83,13 @@ public class AgentTaskStepRecord {
 
   public void setRevision(Integer revision) {
     this.revision = revision;
+  }
+
+  public String getCreatedAt() {
+    return createdAt;
+  }
+
+  public void setCreatedAt(String createdAt) {
+    this.createdAt = createdAt;
   }
 }

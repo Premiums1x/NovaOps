@@ -1,5 +1,6 @@
 package com.novaops.backend.agent.config;
 
+import com.novaops.backend.agent.engine.model.EngineConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,5 +21,14 @@ public class AgentAsyncConfig {
     executor.setWaitForTasksToCompleteOnShutdown(false);
     executor.initialize();
     return executor;
+  }
+
+  @Bean
+  public EngineConfig agentEngineConfig(
+      @Value("${app.agent.task.max-steps:10}") int maxSteps,
+      @Value("${app.agent.task.max-revisions:2}") int maxRevisions,
+      @Value("${app.agent.task.observation-max-chars:2000}") int observationMaxChars,
+      @Value("${app.agent.task.step-timeout-seconds:20}") int stepTimeoutSeconds) {
+    return new EngineConfig(maxSteps, maxRevisions, observationMaxChars, stepTimeoutSeconds, 1);
   }
 }

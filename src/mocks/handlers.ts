@@ -295,6 +295,62 @@ export const handlers = [
     return new HttpResponse(body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } })
   }),
 
+  http.post('/api/agent/tasks', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session) return fail(401, 'token 无效')
+    await delay(200)
+    return ok({ taskId: `mock-task-${Date.now()}` })
+  }),
+
+  http.post('/api/agent/tasks/:id/stream', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session) return fail(401, 'token 无效')
+    const answer = '已完成任务：检索到 1 个 pending 工单《VPN 掉线》，知识库命中《VPN 处置手册》。'
+    const planSteps = [
+      { seq: 1, tool: 'ticket.search', title: '检索工单', why: '找到目标工单' },
+      { seq: 2, tool: 'kb.search', title: '知识库检索', why: '查找处置手册' },
+    ]
+    const frames = [
+      `event: plan\ndata: ${JSON.stringify({ steps: planSteps })}\n\n`,
+      `event: step\ndata: ${JSON.stringify({ seq: 1, tool: 'ticket.search', title: '检索工单', status: 'DONE', observation: '{"total":1,"tickets":[{"id":"A-TICKET-0001","title":"VPN 掉线","status":"pending"}]}', args: { status: 'pending' } })}\n\n`,
+      `event: step\ndata: ${JSON.stringify({ seq: 2, tool: 'kb.search', title: '知识库检索', status: 'DONE', observation: '{"chunks":[{"index":1,"documentName":"VPN 处置手册","score":0.88}]}', args: { query: 'vpn' } })}\n\n`,
+      `event: result\ndata: ${JSON.stringify({ summary: answer })}\n\n`,
+    ]
+    const encoder = new TextEncoder()
+    const body = new ReadableStream({ start(controller) { frames.forEach((frame) => controller.enqueue(encoder.encode(frame))); controller.close() } })
+    return new HttpResponse(body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } })
+  }),
+
+  http.post('/api/agent/tasks/:id/confirm', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session) return fail(401, 'token 无效')
+    return ok({ approved: true })
+  }),
+
+  http.post('/api/agent/tasks/:id/cancel', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session) return fail(401, 'token 无效')
+    return ok(null, '任务已取消')
+  }),
+
+  http.get('/api/agent/tasks', async ({ request }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session) return fail(401, 'token 无效')
+    return ok([])
+  }),
+
+  http.get('/api/agent/tasks/:id', async ({ request, params }) => {
+    if (shouldPassthroughTicketBackend) return passthrough()
+    const session = getSession(request)
+    if (!session) return fail(401, 'token 无效')
+    return ok({ task: { id: String(params.id), goal: '示例任务', status: 'DONE', resultText: null, errorText: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, steps: [] })
+  }),
+
   http.get('/api/tickets', async ({ request }) => {
     if (shouldPassthroughTicketBackend) {
       return passthrough()
