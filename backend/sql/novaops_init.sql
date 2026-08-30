@@ -2,6 +2,9 @@ SET NAMES utf8mb4;
 drop table if exists biz_ticket_attachment;
 drop table if exists kb_chunk;
 drop table if exists kb_document;
+drop table if exists agent_audit_log;
+drop table if exists agent_task_step;
+drop table if exists agent_task;
 drop table if exists agent_message;
 drop table if exists agent_conversation;
 drop table if exists biz_ticket_comment;
@@ -134,6 +137,50 @@ create table agent_message (
   index idx_agent_message_conversation (conversation_id,created_at)
 );
 
+create table agent_task (
+  id varchar(64) primary key,
+  user_id varchar(64) not null,
+  goal varchar(2000) not null,
+  status varchar(20) not null,
+  plan_json text null,
+  result_text text null,
+  error_text varchar(1000) null,
+  created_at datetime not null default current_timestamp,
+  updated_at datetime not null default current_timestamp on update current_timestamp,
+  index idx_agent_task_user (user_id, created_at desc)
+);
+
+create table agent_task_step (
+  id varchar(64) primary key,
+  task_id varchar(64) not null,
+  seq int not null,
+  kind varchar(20) not null,
+  tool_name varchar(100) null,
+  args_json text null,
+  observation_json text null,
+  status varchar(20) not null,
+  revision int not null default 0,
+  created_at datetime not null default current_timestamp,
+  index idx_agent_task_step_task (task_id, seq)
+);
+
+create table agent_audit_log (
+  id varchar(64) primary key,
+  task_id varchar(64) null,
+  user_id varchar(64) not null,
+  source varchar(20) not null default 'task',
+  tool_name varchar(100) not null,
+  args_digest varchar(2000) null,
+  result_digest varchar(2000) null,
+  write_operation tinyint not null default 0,
+  confirmed tinyint null,
+  allowed tinyint not null default 1,
+  detail varchar(500) null,
+  created_at datetime not null default current_timestamp,
+  index idx_agent_audit_user (user_id, created_at desc),
+  index idx_agent_audit_tool (tool_name, created_at desc)
+);
+
 create table biz_ticket (
   id varchar(64) primary key,
   title varchar(255) not null,
@@ -258,11 +305,13 @@ insert into sys_permission (id, code, name) values
   ('perm-kb-view', 'kb:view', '查看知识库'),
   ('perm-kb-edit', 'kb:edit', '编辑知识库'),
   ('perm-auth-user-manage', 'auth:user:manage', '管理用户与身份'),
-  ('perm-agent-chat', 'agent:chat', '使用智能问答');
+  ('perm-agent-chat', 'agent:chat', '使用智能问答'),
+  ('perm-agent-task', 'agent:task', '运行智能体任务');
 
 insert into sys_role_permission (role_id, permission_id) values
   -- admin：全部权限
   ('role-admin', 'perm-agent-chat'),
+  ('role-admin', 'perm-agent-task'),
   ('role-admin', 'perm-auth-user-manage'),
   ('role-admin', 'perm-dashboard-view'),
   ('role-admin', 'perm-ticket-view'),
@@ -284,6 +333,7 @@ insert into sys_role_permission (role_id, permission_id) values
   ('role-admin', 'perm-kb-edit'),
   -- staff：运维人员
   ('role-staff', 'perm-agent-chat'),
+  ('role-staff', 'perm-agent-task'),
   ('role-staff', 'perm-dashboard-view'),
   ('role-staff', 'perm-ticket-view'),
   ('role-staff', 'perm-ticket-create'),
@@ -313,6 +363,8 @@ insert into sys_menu (id, title, name, path, component, icon, permission_code, k
   ('staff-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'staff'),
   ('staff-ticket', '工单', 'TicketRoot', '/ticket', 'RouteView', 'ticket', null, 1, null, 20, 'staff'),
   ('staff-ticket-list', '工单列表', 'TicketList', '/ticket/list', 'TicketListView', null, 'ticket:view', 1, 'staff-ticket', 21, 'staff'),
+  ('full-agent-console', '智能体工作台', 'AgentConsole', '/agent/console', 'AgentConsoleView', 'robot', 'agent:task', 1, null, 45, 'full'),
+  ('staff-agent-console', '智能体工作台', 'AgentConsole', '/agent/console', 'AgentConsoleView', 'robot', 'agent:task', 1, null, 45, 'staff'),
   ('guest-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'guest');
 
 insert into biz_ticket (id, title, description, status, priority, assignee_id, creator_id, due_date, created_at, updated_at) values

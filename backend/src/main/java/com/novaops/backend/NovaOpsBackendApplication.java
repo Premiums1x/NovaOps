@@ -14,6 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     "com.novaops.backend.ticket.mapper",
     "com.novaops.backend.kb.mapper",
     "com.novaops.backend.agent.mapper",
+    "com.novaops.backend.agent.task.mapper",
     "com.novaops.backend.asset.mapper"
 })
 @EnableConfigurationProperties(SecurityProperties.class)
