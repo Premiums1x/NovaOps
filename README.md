@@ -10,6 +10,7 @@ NovaOps 是一个面向企业运维场景的运维管理与 RAG 智能问答平�
 - 知识库：支持文档上传、Apache Tika 异步解析、重叠分块、向量化、分块预览、替换与删除。
 - 可信问答：问题先由受控 Router 分流到 METADATA / RAG / CHAT；RAG 路径具备查询改写、相关性过滤、真实 chunk 证据、grounding 与 chunkId 引用完整性校验。
 - 运维业务：提供工单、资产、Dashboard 等常见中后台模块。
+- 任务型智能体（Agent 工作台）：受控 Plan-and-Act 循环 + 可扩展工具集 + 写操作人工确认 + 全链路审计，并通过 MCP 双向开放/接入外部工具。
 - 双运行模式：可完全使用 MSW Mock，也可连接 Spring Boot、MySQL、Qdrant 与 SiliconFlow。
 - 主题与布局：支持亮色/暗色主题、紧凑模式、动态菜单、多标签页和全局 Agent 浮窗。
 
@@ -199,6 +200,37 @@ Vite 会将 `/api` 代理到 `http://127.0.0.1:8090`。
 - `POST /api/agent/chat`（SSE）
 - `GET /api/agent/conversations`
 - `GET /api/agent/conversations/{id}`
+- `POST /api/agent/tasks`（任务型智能体）
+- `POST /api/agent/tasks/{id}/stream`（SSE）
+- `POST /api/agent/tasks/{id}/confirm` / `POST /api/agent/tasks/{id}/cancel`
+- `GET /api/agent/tasks` / `GET /api/agent/tasks/{id}`
+- `POST /api/mcp`（MCP Server，默认禁用）
+
+#### 任务型智能体（Agent 工作台）
+
+在受控问答之外，项目提供任务型智能体：用户下达运维目标，Agent 在**用户权限范围内**、**业务状态机约束内**、**全链路审计**下规划并执行。
+
+- 范式：受控 Plan-and-Act——模型负责"计划与总结"，代码负责"派发、校验、限额"；步骤失败/空结果触发事件驱动的有界重规划（默认 ≤2 次，总步数 ≤10）。
+- 工具：`ticket.search/detail/assign/transfer/close/comment`、`asset.search`、`kb.search/metadata`，可动态扩展（实现 `AgentToolExecutor` 即自动注册）；远端 MCP 工具桥接后以 `mcp_<server>_<tool>` 出现。
+- 写操作两段式确认：WRITE 工具先返回效果预览（不落库），用户在前端确认后才真正执行；状态机与动作级权限由 Service 层强制。
+- 审计：任务、步骤流水与每一次工具调用（含越权拦截）均落库（`agent_task` / `agent_task_step` / `agent_audit_log`）。
+- 运行模型：引擎循环护栏（步数/重规划/观察截断/单步超时）见 `app.agent.task.*` 配置。任务会话不跨重启保留，但任务与审计记录已持久化可追溯。
+- MCP Server：`POST /api/mcp`（JSON-RPC 2.0，协议版本 2025-03-26）。设置 `NOVAOPS_AGENT_MCP_SERVER_TOKEN` 后启用；仅暴露只读工具，外部宿主（如 Claude Desktop、IDE Agent）以 `Authorization: Bearer <token>` 接入。
+- MCP Client（接入外部工具，如 Tavily）：
+
+```yaml
+app:
+  agent:
+    mcp:
+      remote:
+        servers:
+          - name: tavily
+            endpoint: https://mcp.tavily.com/mcp
+            token: ${TAVILY_API_KEY:}
+            enabled: ${TAVILY_MCP_ENABLED:false}
+```
+
+详见 `docs/AGENT_MODULE_PLAN.md`（设计）与 `docs/AGENT_MODULE_PROGRESS.md`（验收记录）。
 
 Agent 对话会先返回受控路由结果（`route` 事件），并生成一份可公开展示的行动计划（`plan` 事件），再执行真实的处理管线。只有 `RAG` 路由会调用规划模型生成计划，失败或输出格式不合法时自动回退为固定的“检索知识库 → 生成回答 → 校验引用”计划，不会阻断回答；`METADATA` 只读取文档标题、类型、状态等元数据（不执行向量检索），`CHAT` 不访问知识库，两者使用固定计划。RAG 没有有效证据或回答未通过 grounding / chunkId 完整性校验时会安全拒答；会话首轮没有可补全的指代时也会跳过检索词改写调用。可通过 `NOVAOPS_AGENT_PLAN_ENABLED=false` 关闭额外规划调用。
 
