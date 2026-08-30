@@ -163,7 +163,7 @@ cd backend
 mvn -gs mvn-settings.xml spring-boot:run
 ```
 
-后端默认地址：`http://127.0.0.1:8080`。
+后端默认地址：`http://127.0.0.1:8090`。
 
 #### 5. 启动前端
 
@@ -172,7 +172,7 @@ npm install
 npm run dev
 ```
 
-Vite 会将 `/api` 代理到 `http://127.0.0.1:8080`。
+Vite 会将 `/api` 代理到 `http://127.0.0.1:8090`。
 
 ## 主要接口
 
