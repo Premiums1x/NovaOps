@@ -1,5 +1,6 @@
 package com.novaops.backend;
 
+import com.novaops.backend.agent.mcp.McpRemoteProperties;
 import com.novaops.backend.common.config.SecurityProperties;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
@@ -17,7 +18,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     "com.novaops.backend.agent.task.mapper",
     "com.novaops.backend.asset.mapper"
 })
-@EnableConfigurationProperties(SecurityProperties.class)
+@EnableConfigurationProperties({SecurityProperties.class, McpRemoteProperties.class})
 @EnableAsync
 @EnableScheduling
 public class NovaOpsBackendApplication {

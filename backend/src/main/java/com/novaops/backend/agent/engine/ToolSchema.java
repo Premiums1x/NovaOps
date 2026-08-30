@@ -18,6 +18,15 @@ public final class ToolSchema {
   private ToolSchema() {
   }
 
+  /** 包装一个已符合 JSON Schema object 结构的 Map（用于远端 MCP 工具的 inputSchema）。 */
+  public static ToolSchema fromMap(Map<String, Object> schema) {
+    ToolSchema wrapper = new ToolSchema();
+    wrapper.built = schema == null ? Map.of("type", "object", "properties", Map.of(), "required", List.of()) : schema;
+    return wrapper;
+  }
+
+  private Map<String, Object> built;
+
   public static ToolSchema object() {
     return new ToolSchema();
   }
@@ -55,6 +64,9 @@ public final class ToolSchema {
   }
 
   public Map<String, Object> build() {
+    if (built != null) {
+      return built;
+    }
     Map<String, Object> root = new LinkedHashMap<>();
     root.put("type", "object");
     root.put("properties", Map.copyOf(properties));

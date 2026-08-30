@@ -43,6 +43,31 @@ public class ToolRegistry {
     return Optional.ofNullable(tools.get(name));
   }
 
+  /** 动态注册（MCP 远端工具桥接用）：同名工具已存在时返回 false，不覆盖。 */
+  public synchronized boolean register(ToolDescriptor descriptor, AgentToolExecutor executor) {
+    if (descriptor == null || tools.containsKey(descriptor.name())) {
+      return false;
+    }
+    tools.put(descriptor.name(), new ToolHandle(descriptor, executor));
+    return true;
+  }
+
+  /** 注解式动态注册（内部使用）：名字取自类上 @AgentTool 注解。 */
+  public synchronized boolean register(AgentToolExecutor executor) {
+    AgentTool annotation = executor.getClass().getAnnotation(AgentTool.class);
+    if (annotation == null) {
+      throw new IllegalStateException(
+          "AgentToolExecutor 实现缺少 @AgentTool 注解: " + executor.getClass().getName());
+    }
+    return register(new ToolDescriptor(
+        annotation.name(),
+        annotation.title(),
+        annotation.description(),
+        annotation.permission(),
+        annotation.category(),
+        executor.inputSchema().build()), executor);
+  }
+
   /** 按用户权限过滤后的工具描述（permission 为空视为登录可用）。 */
   public List<ToolDescriptor> toolsFor(Set<String> permissions) {
     return tools.values().stream()
