@@ -18,12 +18,26 @@ NovaOps 是 Vue 3 SPA + Spring Boot 单体模块化后端。存量的认证、�
 
 - `common/security/AuthInterceptor`：所有 `/api/**` 的 JWT 与账号启用状态入口。
 - `auth/AuthService`：登录认证、用户管理和菜单。
-- `kb/KbDocumentService`：文档 CRUD；`KbIngestionService`：异步解析与向量化；`KbRetrievalService`：唯一的对内检索契约。
-- `agent/AgentService`：检索、Prompt、模型流、校验、SSE 和会话持久化。
+- `kb/KbDocumentService`：文档 CRUD；`KbIngestionService`：异步解析与向量化；`KbRetrievalService`：唯一的 chunk 检索契约；`KbMetadataService`：只读文档元数据快照。
+- `agent/QuestionRouter`：只允许 `METADATA / RAG / CHAT` 三种决策。
+- `agent/AgentWorkflowOrchestrator`：按 route 选择固定 Handler/Pipeline，不允许模型自由调用工具。
+- `agent/RagPipeline`：查询改写、检索、相关性校验、证据状态、回答生成、grounding 与引用完整性校验。
+- `agent/AgentService`：会话、异步任务与 SSE 生命周期，不直接实现检索或模型判断。
 
 ## 4. RAG 数据流
 
-上传时，MySQL 保存文档状态和原始 chunk，Qdrant 保存 embedding 与 `documentId/chunkId/documentName` payload。问答时，Agent 只调用 `KbRetrievalService.retrieve(query, topK, minScore)`；无结果拒答，有结果才调用模型。回答引用编号必须存在于本次命中集合，并通过论断与 chunk 的 embedding 相似度复核。
+上传时，MySQL 保存文档状态和原始 chunk，Qdrant 保存 embedding 与 `documentId/chunkId/documentName` payload。问答数据流如下：
+
+```text
+问题 → Router
+  ├─ METADATA → MySQL 文档元数据快照 → 元数据回答
+  ├─ CHAT     → 通用模型回答（不访问知识库）
+  └─ RAG      → Query Rewrite → Qdrant Retrieve → LLM 相关性校验/重排
+               → 不可变 Evidence State → 结构化回答(chunkId)
+               → Grounding Check → 程序级 Citation Integrity → SSE
+```
+
+Retriever 原始输出是证据唯一来源。0 条 raw chunk 或 0 条 validated chunk 时不会调用回答生成器。模型只能返回当前 validated evidence 中的 `chunkId`；后端映射为展示序号和原始 chunk，前端不能让模型改写证据。grounding 或引用完整性失败时最多重新生成一次，仍失败则安全拒答。
 
 ## 5. 安全边界
 

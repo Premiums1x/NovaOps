@@ -3,7 +3,7 @@ import type { AgentSseEvent } from '@/types/agent'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
-const KNOWN_EVENTS: AgentSseEvent[] = ['delta', 'citation', 'meta', 'done', 'error']
+const KNOWN_EVENTS: AgentSseEvent[] = ['route', 'delta', 'citation', 'evidence', 'meta', 'done', 'error']
 
 const parseFrame = (frame: string) => {
   let event = 'message'

@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatCore from './ChatCore.vue'
 
 const store = reactive({
-  messages: [] as Array<{ id: string; role: 'user' | 'assistant'; content: string }>,
+  messages: [] as Array<Record<string, unknown> & { id: string; role: 'user' | 'assistant'; content: string }>,
   loading: false,
 })
 
@@ -62,5 +62,39 @@ describe('ChatCore', () => {
     expect(userMessage.find('.markdown-preview').exists()).toBe(false)
     expect(wrapper.get('.message.assistant').get('.md-preview-component').text()).toBe('这是 **Markdown** 回复')
     expect(wrapper.find('.x-sender-stub').exists()).toBe(true)
+  })
+
+  it('renders the real evidence chunk returned by the backend', async () => {
+    store.messages = [{
+      id: 'assistant-evidence',
+      role: 'assistant',
+      content: '使用 pnpm 安装。',
+      route: 'RAG',
+      retrievalExecuted: true,
+      retrievedCount: 2,
+      validatedCount: 1,
+      validationStatus: 'PASSED',
+      citations: [{ index: 1, documentId: 'doc-1', documentName: 'Guide.md', chunkId: 'chunk-12', content: 'pnpm add package', score: 0.86 }],
+      evidence: [{ index: 1, documentId: 'doc-1', documentName: 'Guide.md', chunkId: 'chunk-12', content: 'pnpm add package', score: 0.86 }],
+    }]
+    const wrapper = mount(ChatCore, {
+      global: {
+        stubs: {
+          'a-tag': { template: '<span><slot /></span>' },
+          'a-alert': true,
+          'a-collapse': { template: '<div><slot /></div>' },
+          'a-collapse-panel': { template: '<div><slot /></div>' },
+          UserOutlined: true,
+          RobotOutlined: true,
+        },
+      },
+    })
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('知识检索')
+    expect(wrapper.text()).toContain('chunk-12')
+    expect(wrapper.text()).toContain('pnpm add package')
+    expect(wrapper.text()).toContain('检索 2 条 · 有效 1 条')
   })
 })

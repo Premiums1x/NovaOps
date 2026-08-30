@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, ref } from 'vue'
 import { RobotOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { BubbleList, Welcome, XSender } from 'vue-element-plus-x'
 import type { BubbleListItemProps } from 'vue-element-plus-x/types/BubbleList'
-import type { CitationDto } from '@/types/agent'
+import type { CitationDto, QueryRoute, ValidationStatus } from '@/types/agent'
 import { useChat } from '@/composables/useChat'
 
 type ChatBubble = BubbleListItemProps & {
@@ -11,12 +11,39 @@ type ChatBubble = BubbleListItemProps & {
   role: 'user' | 'assistant'
   content: string
   citations?: CitationDto[]
+  evidence?: CitationDto[]
+  route?: QueryRoute
+  routeReason?: string
+  retrievalExecuted?: boolean
+  retrievedCount?: number
+  validatedCount?: number
+  validationStatus?: ValidationStatus
+  validationReason?: string
   validationPassed?: boolean
 }
 
 const { store, send, stop } = useChat()
 const senderRef = ref<InstanceType<typeof XSender>>()
 const Preview = defineAsyncComponent(() => import('@/components/markdown/MdPreviewAsync.vue'))
+
+const routeLabel: Record<QueryRoute, string> = {
+  METADATA: '元数据',
+  RAG: '知识检索',
+  CHAT: '通用对话',
+}
+
+const routeColor: Record<QueryRoute, string> = {
+  METADATA: 'purple',
+  RAG: 'blue',
+  CHAT: 'cyan',
+}
+
+const validationLabel: Partial<Record<ValidationStatus, string>> = {
+  PASSED: '依据校验通过',
+  NO_EVIDENCE: '无可靠证据',
+  FAILED: '依据校验失败',
+  SERVICE_UNAVAILABLE: '服务暂不可用',
+}
 
 const bubbleItems = computed<ChatBubble[]>(() =>
   store.messages.map((item, index) => ({
@@ -82,16 +109,44 @@ const askSuggestion = async (question: string) => {
         </template>
         <template #footer="{ item }">
           <div v-if="item.role === 'assistant'" class="answer-footer">
+            <div v-if="item.route" class="execution-summary">
+              <a-tag :color="routeColor[item.route]" :title="item.routeReason">
+                {{ routeLabel[item.route] }}
+              </a-tag>
+              <a-tag v-if="item.retrievalExecuted">
+                检索 {{ item.retrievedCount || 0 }} 条 · 有效 {{ item.validatedCount || 0 }} 条
+              </a-tag>
+              <a-tag
+                v-if="item.validationStatus && validationLabel[item.validationStatus]"
+                :color="item.validationStatus === 'PASSED' ? 'success' : item.validationStatus === 'NO_EVIDENCE' ? 'default' : 'warning'"
+                :title="item.validationReason"
+              >
+                {{ validationLabel[item.validationStatus] }}
+              </a-tag>
+            </div>
             <div v-if="item.citations?.length" class="citations">
+              <span class="footer-label">回答引用</span>
               <a-tag v-for="citation in item.citations" :key="citation.chunkId" color="blue">
                 [{{ citation.index }}] {{ citation.documentName }}
               </a-tag>
             </div>
+            <a-collapse v-if="item.evidence?.length" class="evidence-list" ghost size="small">
+              <a-collapse-panel key="evidence" :header="`查看 ${item.evidence.length} 条原始检索证据`">
+                <article v-for="evidence in item.evidence" :key="evidence.chunkId" class="evidence-card">
+                  <div class="evidence-heading">
+                    <strong>[{{ evidence.index }}] {{ evidence.documentName }}</strong>
+                    <span>score {{ evidence.score.toFixed(3) }}</span>
+                  </div>
+                  <code>{{ evidence.chunkId }}</code>
+                  <pre>{{ evidence.content }}</pre>
+                </article>
+              </a-collapse-panel>
+            </a-collapse>
             <a-alert
-              v-if="item.validationPassed === false"
+              v-if="item.validationStatus === 'FAILED' || item.validationPassed === false"
               type="warning"
               show-icon
-              message="该回答未通过完整依据校验，请谨慎参考"
+              message="回答未通过完整依据校验，系统已阻止未验证内容输出"
             />
           </div>
         </template>
@@ -138,7 +193,15 @@ const askSuggestion = async (question: string) => {
 .bubble-list :deep(.markdown-preview .md-editor){--md-bk-color:transparent;--md-color:var(--nova-text);border:0!important;color:var(--nova-text)}
 .bubble-list :deep(.markdown-preview .md-editor-preview){padding:0!important;color:var(--nova-text)}
 .answer-footer{display:grid;gap:8px;margin-top:8px}
-.citations{display:flex;flex-wrap:wrap;gap:6px}
+.execution-summary,.citations{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.footer-label{color:var(--nova-text-secondary);font-size:12px}
+.evidence-list{border-top:1px solid var(--nova-border)}
+.evidence-list :deep(.ant-collapse-header){padding:8px 0!important;color:var(--nova-text-secondary)!important;font-size:13px}
+.evidence-list :deep(.ant-collapse-content-box){display:grid;gap:10px;padding:0!important}
+.evidence-card{display:grid;gap:6px;padding:10px;border:1px solid var(--nova-border);border-radius:8px;background:color-mix(in srgb,var(--nova-surface) 70%,transparent)}
+.evidence-heading{display:flex;justify-content:space-between;gap:12px;color:var(--nova-text);font-size:12px}
+.evidence-heading span,.evidence-card code{color:var(--nova-text-secondary);font-size:11px}
+.evidence-card pre{max-height:220px;margin:0;padding:10px;overflow:auto;border-radius:6px;background:var(--nova-surface);color:var(--nova-text);font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .sender-dock{display:grid;gap:8px;padding:14px clamp(16px,4vw,56px) 12px;border-top:1px solid var(--nova-border);background:color-mix(in srgb,var(--nova-surface) 94%,transparent);backdrop-filter:blur(12px)}
 .nova-sender{width:100%}
 .nova-sender :deep(.el-sender-wrap){border-color:var(--nova-border);background:var(--nova-surface-elevated);box-shadow:0 10px 30px rgba(15,23,42,.08)}
