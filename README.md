@@ -8,7 +8,7 @@ NovaOps 是一个面向企业运维场景的运维管理与 RAG 智能问答平�
 - 单身份权限：每个用户绑定一个身份，管理员可维护用户状态、身份和密码。
 - 动态权限：后端下发菜单与权限码，前端实现动态路由和按钮级鉴权。
 - 知识库：支持文档上传、Apache Tika 异步解析、重叠分块、向量化、分块预览、替换与删除。
-- RAG Agent：基于知识库检索生成回答，支持 POST SSE 流式输出、引用校验、历史会话和无依据拒答。
+- 可信问答：问题先由受控 Router 分流到 METADATA / RAG / CHAT；RAG 路径具备查询改写、相关性过滤、真实 chunk 证据、grounding 与 chunkId 引用完整性校验。
 - 运维业务：提供工单、资产、Dashboard 等常见中后台模块。
 - 双运行模式：可完全使用 MSW Mock，也可连接 Spring Boot、MySQL、Qdrant 与 SiliconFlow。
 - 主题与布局：支持亮色/暗色主题、紧凑模式、动态菜单、多标签页和全局 Agent 浮窗。
@@ -148,6 +148,10 @@ SILICONFLOW_EMBEDDING_MODEL=BAAI/bge-m3
 QDRANT_BASE_URL=http://localhost:6333
 QDRANT_COLLECTION=novaops_kb
 NOVAOPS_KB_STORAGE=./data/kb
+NOVAOPS_AGENT_TOP_K=5
+NOVAOPS_AGENT_MIN_SCORE=0.55
+NOVAOPS_AGENT_RETRIEVAL_VALIDATION_MIN_SCORE=0.5
+NOVAOPS_AGENT_METADATA_MAX_DOCUMENTS=200
 ```
 
 不要提交真实密码、API Key 或本地配置文件。
@@ -195,6 +199,8 @@ Vite 会将 `/api` 代理到 `http://127.0.0.1:8080`。
 - `POST /api/agent/chat`（SSE）
 - `GET /api/agent/conversations`
 - `GET /api/agent/conversations/{id}`
+
+Agent SSE 会按执行情况返回 `route`、`delta`、`citation`、`evidence`、`meta` 与 `done` 事件。`METADATA` 只读取文档标题、类型、状态等元数据；`RAG` 才执行向量检索；`CHAT` 不访问知识库。RAG 没有有效证据或回答未通过 grounding / chunkId 完整性校验时会安全拒答。
 
 ### 工单
 

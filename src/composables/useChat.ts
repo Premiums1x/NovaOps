@@ -2,7 +2,7 @@ import { onBeforeUnmount, reactive } from 'vue'
 import { message } from 'ant-design-vue'
 import { useChatStore } from '@/store/chat'
 import { streamSse } from '@/utils/sse'
-import type { ChatMessageDto, CitationDto } from '@/types/agent'
+import type { ChatMessageDto, CitationDto, QueryRoute, ValidationStatus } from '@/types/agent'
 
 // 模块级共享：独立对话页与全局浮窗同时挂载时，"停止"按钮必须能
 // 中断当前真正在跑的那一条流，而不是各自实例里那个已失效的引用
@@ -35,9 +35,19 @@ export const useChat = () => {
         { conversationId: store.conversationId || undefined, content: question },
         (event, data) => {
           if (typeof data.conversationId === 'string') store.conversationId = data.conversationId
+          if (event === 'route') {
+            assistant.route = data.route as QueryRoute
+            assistant.routeReason = String(data.reason || '')
+          }
           if (event === 'delta') assistant.content += String(data.content || '')
           if (event === 'citation') assistant.citations = (data.citations || []) as CitationDto[]
+          if (event === 'evidence') assistant.evidence = (data.evidence || []) as CitationDto[]
           if (event === 'meta') {
+            assistant.retrievalExecuted = Boolean(data.retrievalExecuted)
+            assistant.retrievedCount = Number(data.retrievedCount || 0)
+            assistant.validatedCount = Number(data.validatedCount || 0)
+            assistant.validationStatus = data.validationStatus as ValidationStatus
+            assistant.validationReason = String(data.validationReason || '')
             if (typeof data.validationPassed === 'boolean') {
               assistant.validationPassed = data.validationPassed
             }

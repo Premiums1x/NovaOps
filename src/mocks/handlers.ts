@@ -252,10 +252,22 @@ export const handlers = [
     const payload = await request.json() as { conversationId?: string; content: string }
     const conversationId = payload.conversationId || `mock-conv-${Date.now()}`
     if (!payload.conversationId) mockConversations.unshift({ id: conversationId, userId: session.username, title: payload.content.slice(0, 40), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-    const answer = '根据知识库资料，NovaOps 会基于企业知识库文档提供带引用的回答。[1]'
-    const frames = [...answer.matchAll(/.{1,12}/gu)].map((match) => `event: delta\ndata: ${JSON.stringify({ conversationId, content: match[0] })}\n\n`)
-    frames.push(`event: citation\ndata: ${JSON.stringify({ conversationId, citations: [{ index: 1, documentId: 'mock-doc-1', documentName: 'NovaOps 使用手册', chunkId: 'chunk-2', content: '知识库文档支持 RAG 检索并附带来源引用。', score: .92 }] })}\n\n`)
-    frames.push(`event: meta\ndata: ${JSON.stringify({ conversationId, validationPassed: true, validationReason: '知识库引用校验通过' })}\n\n`)
+    const isMetadata = /知识库.*(什么|哪些|有什么|内容|文档|资料|主题|概览|目录)/u.test(payload.content)
+    const isChat = /^(你好|您好|嗨|hi|hello)[!！。?？\s]*$/iu.test(payload.content.trim())
+    const route = isMetadata ? 'METADATA' : isChat ? 'CHAT' : 'RAG'
+    const evidence = route === 'RAG'
+      ? [{ index: 1, documentId: 'mock-doc-1', documentName: 'NovaOps 使用手册', chunkId: 'chunk-2', content: '知识库文档支持 RAG 检索并附带来源引用。', score: .92 }]
+      : []
+    const answer = route === 'METADATA'
+      ? '当前 Mock 知识库包含《NovaOps 使用手册》，可用于了解知识库与 RAG 问答能力。'
+      : route === 'CHAT'
+        ? '你好，我是 Nova AI。你可以问我通用问题，也可以询问知识库中的具体内容。'
+        : 'NovaOps 会检索企业知识库，并仅基于通过校验的真实证据回答。'
+    const frames = [`event: route\ndata: ${JSON.stringify({ conversationId, route, reason: 'Mock 受控路由结果' })}\n\n`]
+    frames.push(...[...answer.matchAll(/.{1,12}/gu)].map((match) => `event: delta\ndata: ${JSON.stringify({ conversationId, content: match[0] })}\n\n`))
+    frames.push(`event: citation\ndata: ${JSON.stringify({ conversationId, citations: evidence })}\n\n`)
+    frames.push(`event: evidence\ndata: ${JSON.stringify({ conversationId, evidence })}\n\n`)
+    frames.push(`event: meta\ndata: ${JSON.stringify({ conversationId, retrievalExecuted: route === 'RAG', retrievedCount: evidence.length, validatedCount: evidence.length, validationStatus: route === 'RAG' ? 'PASSED' : 'NOT_APPLICABLE', validationReason: route === 'RAG' ? 'grounding_and_citation_integrity_passed' : 'retrieval_not_required' })}\n\n`)
     frames.push(`event: done\ndata: ${JSON.stringify({ conversationId })}\n\n`)
     const encoder = new TextEncoder()
     const body = new ReadableStream({ start(controller) { frames.forEach((frame) => controller.enqueue(encoder.encode(frame))); controller.close() } })
