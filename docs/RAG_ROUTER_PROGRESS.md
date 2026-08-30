@@ -6,7 +6,7 @@
 
 - 当前阶段：阶段 F——文档、验收与 PR
 - 当前分支：`feat/rag-router-pipeline`
-- 总体状态：进行中
+- 总体状态：代码与验收完成，等待 PR 创建
 - 执行方案：`docs/RAG_ROUTER_REFACTOR_PLAN.md`
 
 ## 阶段跟踪
@@ -73,12 +73,24 @@
 
 - [x] 更新 README 与项目架构说明
 - [x] 后端单元测试通过
-- [ ] 前端单元测试全部通过（23/24；剩余 1 项是改造前本地 Vite 端口改动与仓库后端端口不一致）
+- [x] 前端单元测试全部通过（干净检出 9 suites / 25 tests）
 - [x] ESLint 通过
 - [x] TypeScript 与生产构建通过
-- [ ] 审计 diff 与敏感信息
-- [ ] 提交并推送分支
+- [x] 审计 diff 与敏感信息
+- [x] 提交本地分支（`71b7312`）
+- [ ] 推送分支
 - [ ] 创建 PR
+
+## 验收结果
+
+- 后端：13 suites / 63 tests，0 failures，0 errors。
+- 前端：干净检出 9 suites / 25 tests 全部通过。
+- TypeScript：`vue-tsc -b` 通过。
+- ESLint：0 warnings / 0 errors。
+- 生产构建：Vite build 通过；仅保留项目原有的大 chunk 与静态/动态 import 混用提示。
+- Diff：`git diff --check` 通过；未检出密钥；本次提交不包含用户原有 `vite.config.ts` 与 `conflict_dump.txt`。
+
+说明：主工作区直接运行全量前端测试时，用户原有未提交的 `vite.config.ts` 会使端口契约测试看到 8080，而仓库后端配置是 8090。为证明本次提交自身状态，已从 `71b7312` 创建临时干净检出并完成 25/25 测试，随后安全删除该临时检出。
 
 ## 核心不变量验收表
 
