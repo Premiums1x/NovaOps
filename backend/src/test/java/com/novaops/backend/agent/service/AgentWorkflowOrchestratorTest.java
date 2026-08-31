@@ -22,6 +22,7 @@ class AgentWorkflowOrchestratorTest {
   private MetadataWorkflowHandler metadata;
   private RagPipeline rag;
   private ChatWorkflowHandler chat;
+  private SafeResponseWorkflowHandler safe;
   private AgentWorkflowOrchestrator orchestrator;
 
   @BeforeEach
@@ -30,7 +31,21 @@ class AgentWorkflowOrchestratorTest {
     metadata = mock(MetadataWorkflowHandler.class);
     rag = mock(RagPipeline.class);
     chat = mock(ChatWorkflowHandler.class);
-    orchestrator = new AgentWorkflowOrchestrator(router, metadata, rag, chat);
+    safe = mock(SafeResponseWorkflowHandler.class);
+    orchestrator = new AgentWorkflowOrchestrator(router, metadata, rag, chat, safe);
+  }
+
+  @Test
+  void clarifyRouteCannotInvokeModelOrKnowledgeHandlers() {
+    RouteDecision decision = RouteDecision.clarify("router_unavailable", "未执行检索");
+    WorkflowResult expected = result(QueryRoute.CLARIFY);
+    when(safe.execute(decision)).thenReturn(expected);
+
+    assertSame(expected, orchestrator.execute("这个怎么弄？", List.of(), decision));
+    verify(safe).execute(decision);
+    verify(metadata, never()).execute(anyString(), any());
+    verify(rag, never()).execute(anyString(), anyList(), any());
+    verify(chat, never()).execute(anyString(), anyList(), any());
   }
 
   @Test

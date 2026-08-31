@@ -50,10 +50,14 @@ public class RagPipeline {
   }
 
   public RagPipelineOutcome execute(String question, List<ConversationTurn> history, RouteDecision route) {
-    String retrievalQuery = rewriteOrOriginal(question, history);
+    String retrievalQuery = route.semanticQuery().isBlank()
+        ? rewriteOrOriginal(question, history)
+        : route.semanticQuery();
+    int requestedTopK = route.topK() == null ? topK : route.topK();
     List<RetrievalChunk> retrieved;
     try {
-      RetrievalResult result = retrievalService.retrieve(retrievalQuery, topK, minScore);
+      RetrievalResult result = retrievalService.retrieve(
+          retrievalQuery, requestedTopK, minScore, route.documentFilter());
       retrieved = result == null || result.chunks() == null ? List.of() : List.copyOf(result.chunks());
     } catch (Exception ex) {
       return terminal(route, question, retrievalQuery, List.of(), List.of(), null, false, false,
@@ -101,7 +105,8 @@ public class RagPipeline {
             question, retrievalQuery, true, retrieved, validated, answer, true, true, "");
         WorkflowResult response = new WorkflowResult(
             QueryRoute.RAG, route.reason(), answer.answer(), citationDtos, evidenceDtos, true,
-            retrieved.size(), validated.size(), ValidationStatus.PASSED, "grounding_and_citation_integrity_passed");
+            retrieved.size(), validated.size(), ValidationStatus.PASSED, "grounding_and_citation_integrity_passed",
+            retrieved, validated);
         return new RagPipelineOutcome(response, state);
       } catch (Exception ex) {
         lastFailure = "answer_or_grounding_model_failure";
@@ -168,7 +173,7 @@ public class RagPipeline {
         question, retrievalQuery, true, retrieved, validated, answer, groundingPassed, citationPassed, reason);
     WorkflowResult response = new WorkflowResult(
         QueryRoute.RAG, route.reason(), responseText, List.of(), evidenceDtos, true,
-        retrieved.size(), validated.size(), status, reason);
+        retrieved.size(), validated.size(), status, reason, retrieved, validated);
     return new RagPipelineOutcome(response, state);
   }
 

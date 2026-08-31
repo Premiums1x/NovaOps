@@ -38,6 +38,13 @@ class QuestionRouterTest {
   void fallsBackToChatOnlyForUnambiguousSmallTalk() {
     when(gateway.route(anyString(), anyList())).thenThrow(new IllegalStateException("offline"));
     assertEquals(QueryRoute.CHAT, router.route("你好！", List.of()).route());
-    assertEquals(QueryRoute.RAG, router.route("Element Plus X 怎么安装？", List.of()).route());
+    assertEquals(QueryRoute.CLARIFY, router.route("Element Plus X 怎么安装？", List.of()).route());
+  }
+
+  @Test
+  void lowConfidenceNeverFallsThroughToRag() {
+    when(gateway.route(anyString(), anyList())).thenReturn(new RouteDecision(
+        QueryRoute.RAG, "knowledge_question", 0.4, "uncertain", "安装方法", "", "", "", "", 5, "不确定"));
+    assertEquals(QueryRoute.CLARIFY, router.route("这个怎么装？", List.of()).route());
   }
 }

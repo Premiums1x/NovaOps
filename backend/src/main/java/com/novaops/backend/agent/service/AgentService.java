@@ -8,13 +8,16 @@ import com.novaops.backend.agent.model.AgentMessageRecord;
 import com.novaops.backend.agent.model.ConversationRecord;
 import com.novaops.backend.agent.model.ConversationTurn;
 import com.novaops.backend.agent.model.QueryRoute;
+import com.novaops.backend.agent.model.RouteDecision;
 import com.novaops.backend.agent.model.ValidationStatus;
 import com.novaops.backend.agent.model.WorkflowResult;
+import com.novaops.backend.kb.dto.RetrievalChunk;
 import com.novaops.backend.common.exception.BusinessException;
 import com.novaops.backend.common.security.CurrentSession;
 import com.novaops.backend.common.util.IdGenerator;
 import java.io.IOException;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -31,7 +34,6 @@ public class AgentService {
 
   private final AgentMapper mapper;
   private final AgentWorkflowOrchestrator orchestrator;
-  private final AgentPlanner planner;
   private final ObjectMapper objectMapper;
   private final Executor taskExecutor;
   private final long timeout;
@@ -39,13 +41,11 @@ public class AgentService {
   public AgentService(
       AgentMapper mapper,
       AgentWorkflowOrchestrator orchestrator,
-      AgentPlanner planner,
       ObjectMapper objectMapper,
       @Qualifier("agentTaskExecutor") Executor taskExecutor,
       @Value("${app.agent.sse-timeout-ms:120000}") long timeout) {
     this.mapper = mapper;
     this.orchestrator = orchestrator;
-    this.planner = planner;
     this.objectMapper = objectMapper;
     this.taskExecutor = taskExecutor;
     this.timeout = timeout;
@@ -71,9 +71,7 @@ public class AgentService {
       task = CompletableFuture.runAsync(() -> {
         try {
           var route = orchestrator.route(request.getContent(), history);
-          send(emitter, "route", conversation.getId(), Map.of(
-              "route", route.route().name(),
-              "reason", route.reason()));
+          send(emitter, "route", conversation.getId(), routePayload(route));
           AgentPlanDto plan = buildPlan(request.getContent(), route.route());
           send(emitter, "plan", conversation.getId(), Map.of("steps", plan.steps()));
           List<AgentPlanStepDto> steps = plan.steps();
@@ -82,7 +80,7 @@ public class AgentService {
           }
           WorkflowResult result = orchestrator.execute(request.getContent(), history, route);
           sendStepResults(emitter, conversation.getId(), steps, result);
-          sendResult(emitter, conversation.getId(), result, started);
+          sendResult(emitter, conversation.getId(), route, result, started);
         } catch (Exception ex) {
           sendError(emitter, conversation.getId(), DEFAULT_ERROR);
         }
@@ -107,11 +105,14 @@ public class AgentService {
     return new ConversationDetailResponse(conversation, mapper.listMessages(id));
   }
 
-  // 仅 RAG 路由需要规划模型生成展示计划；METADATA/CHAT 的步骤是固定的，
-  // 直接给出确定性计划，省掉对这两类问题毫无收益的一次模型调用
+  // 对话计划只是 UI 展示，不应在真实检索前额外调用模型；
+  // 任务型 Agent 的 Plan-and-Act 由独立引擎负责，不经过这里。
   private AgentPlanDto buildPlan(String question, QueryRoute route) {
     if (route == QueryRoute.RAG) {
-      return planner.plan(question);
+      return new AgentPlanDto(List.of(
+          new AgentPlanStepDto("search_kb", "检索知识库", question, "执行真实向量检索", "pending"),
+          new AgentPlanStepDto("answer", "生成回答", null, "仅在存在有效证据时生成回答", "pending"),
+          new AgentPlanStepDto("validate", "校验依据", null, "校验 grounding 与引用完整性", "pending")));
     }
     if (route == QueryRoute.METADATA) {
       return new AgentPlanDto(List.of(
@@ -171,8 +172,14 @@ public class AgentService {
         .toList();
   }
 
-  private void sendResult(SseEmitter emitter, String conversationId, WorkflowResult result, long started)
+  private void sendResult(
+      SseEmitter emitter,
+      String conversationId,
+      RouteDecision route,
+      WorkflowResult result,
+      long started)
       throws IOException {
+    long elapsedMs = System.currentTimeMillis() - started;
     sendChunks(emitter, conversationId, result.answer());
     send(emitter, "citation", conversationId, Map.of("citations", result.citations()));
     send(emitter, "evidence", conversationId, Map.of("evidence", result.evidence()));
@@ -182,13 +189,14 @@ public class AgentService {
         "validatedCount", result.validatedCount(),
         "validationStatus", result.validationStatus().name(),
         "validationReason", result.validationReason(),
-        "elapsedMs", System.currentTimeMillis() - started));
+        "elapsedMs", elapsedMs));
     saveMessage(
         conversationId,
         "assistant",
         result.answer(),
         result.citations(),
-        persistedValidation(result.validationStatus()));
+        persistedValidation(result.validationStatus()),
+        executionAudit(route, result, elapsedMs));
     mapper.touchConversation(conversationId);
     send(emitter, "done", conversationId, Map.of());
     emitter.complete();
@@ -243,6 +251,16 @@ public class AgentService {
   }
 
   private void saveMessage(String conversationId, String role, String content, Object citations, Boolean passed) {
+    saveMessage(conversationId, role, content, citations, passed, null);
+  }
+
+  private void saveMessage(
+      String conversationId,
+      String role,
+      String content,
+      Object citations,
+      Boolean passed,
+      Object execution) {
     AgentMessageRecord record = new AgentMessageRecord();
     record.setId(IdGenerator.randomId("msg"));
     record.setConversationId(conversationId);
@@ -254,7 +272,57 @@ public class AgentService {
     } catch (Exception ignored) {
       record.setCitationsJson(null);
     }
+    try {
+      record.setExecutionJson(execution == null ? null : objectMapper.writeValueAsString(execution));
+    } catch (Exception ignored) {
+      record.setExecutionJson(null);
+    }
     mapper.insertMessage(record);
+  }
+
+  private Map<String, Object> routePayload(RouteDecision route) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("route", route.route().name());
+    payload.put("intent", route.intent());
+    payload.put("confidence", route.confidence());
+    payload.put("reasonCode", route.reasonCode());
+    payload.put("semanticQuery", route.semanticQuery());
+    payload.put("metadataOperation", route.metadataOperation());
+    payload.put("documentFilter", route.documentFilter());
+    payload.put("fileTypeFilter", route.fileTypeFilter());
+    payload.put("statusFilter", route.statusFilter());
+    if (route.topK() != null) {
+      payload.put("topK", route.topK());
+    }
+    payload.put("reason", route.reason());
+    return payload;
+  }
+
+  private Map<String, Object> executionAudit(RouteDecision route, WorkflowResult result, long elapsedMs) {
+    Map<String, Object> audit = new LinkedHashMap<>(routePayload(route));
+    audit.put("retrievalExecuted", result.retrievalExecuted());
+    audit.put("retrievedCount", result.retrievedCount());
+    audit.put("validatedCount", result.validatedCount());
+    audit.put("retrievedChunks", summarizeChunks(result.retrievedChunks()));
+    audit.put("validatedChunks", summarizeChunks(result.validatedChunks()));
+    audit.put("citationChunkIds", result.citations().stream().map(citation -> citation.chunkId()).toList());
+    audit.put("validationStatus", result.validationStatus().name());
+    audit.put("validationReason", result.validationReason());
+    audit.put("answerModelCalled", result.route() == QueryRoute.CHAT
+        || result.route() == QueryRoute.RAG && result.validatedCount() > 0);
+    audit.put("elapsedMs", elapsedMs);
+    return audit;
+  }
+
+  private List<Map<String, Object>> summarizeChunks(List<RetrievalChunk> chunks) {
+    return chunks.stream().map(chunk -> {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("chunkId", chunk.chunkId());
+      item.put("documentId", chunk.documentId());
+      item.put("documentName", chunk.documentName());
+      item.put("score", chunk.score());
+      return item;
+    }).toList();
   }
 
   private void cancel(AtomicReference<CompletableFuture<Void>> reference) {

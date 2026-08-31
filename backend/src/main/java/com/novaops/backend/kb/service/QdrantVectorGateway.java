@@ -101,12 +101,25 @@ public class QdrantVectorGateway {
   }
 
   public List<RetrievalChunk> search(String query, int topK, double minScore) {
+    return search(query, topK, minScore, "");
+  }
+
+  public List<RetrievalChunk> search(String query, int topK, double minScore, String documentFilter) {
     float[] vector = embeddingModel.embed(query);
     ensureCollection(vector.length);
+    Map<String, Object> request = new HashMap<>();
+    request.put("vector", vector);
+    request.put("limit", topK);
+    request.put("score_threshold", minScore);
+    request.put("with_payload", true);
+    if (StringUtils.hasText(documentFilter)) {
+      request.put("filter", Map.of("must", List.of(
+          Map.of("key", "documentName", "match", Map.of("value", documentFilter)))));
+    }
     JsonNode root = client.post()
         .uri("/collections/{collection}/points/search", properties.getQdrantCollection())
         .contentType(MediaType.APPLICATION_JSON)
-        .body(Map.of("vector", vector, "limit", topK, "score_threshold", minScore, "with_payload", true))
+        .body(request)
         .retrieve()
         .body(JsonNode.class);
     List<RetrievalChunk> result = new ArrayList<>();

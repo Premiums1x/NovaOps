@@ -6,4 +6,8 @@ public class QdrantKbRetrievalService implements KbRetrievalService {
   public RetrievalResult retrieve(String query,int topK,double minScore){
     return new RetrievalResult(vectorStore.search(query,topK,minScore));
   }
+  @Override
+  public RetrievalResult retrieve(String query,int topK,double minScore,String documentFilter){
+    return new RetrievalResult(vectorStore.search(query,topK,minScore,documentFilter));
+  }
 }

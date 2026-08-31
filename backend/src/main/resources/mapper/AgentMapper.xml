@@ -5,6 +5,6 @@
   <select id="findConversation" resultType="com.novaops.backend.agent.model.ConversationRecord">select * from agent_conversation where user_id=#{userId} and id=#{id} limit 1</select>
   <select id="listConversations" resultType="com.novaops.backend.agent.model.ConversationRecord">select * from agent_conversation where user_id=#{userId} order by updated_at desc limit 100</select>
   <update id="touchConversation">update agent_conversation set updated_at=now() where id=#{id}</update>
-  <insert id="insertMessage">insert into agent_message(id,conversation_id,role,content,citations_json,validation_passed,created_at) values(#{id},#{conversationId},#{role},#{content},#{citationsJson},#{validationPassed},now())</insert>
+  <insert id="insertMessage">insert into agent_message(id,conversation_id,role,content,citations_json,validation_passed,execution_json,created_at) values(#{id},#{conversationId},#{role},#{content},#{citationsJson},#{validationPassed},#{executionJson},now())</insert>
   <select id="listMessages" resultType="com.novaops.backend.agent.model.AgentMessageRecord">select * from agent_message where conversation_id=#{conversationId} order by created_at,id</select>
 </mapper>

@@ -18,12 +18,32 @@ class StructuredModelOutputParserTest {
   }
 
   @Test
-  void parsesJsonInsideMarkdownFenceAndRestrictsRouteEnum() {
-    var decision = parser.parseRoute("```json\n{\"route\":\"metadata\",\"reason\":\"总览\"}\n```");
+  void parsesControlledRouteSchemaAndRestrictsRouteEnum() {
+    var decision = parser.parseRoute("""
+        {"version":"1","route":"metadata","intent":"knowledge_overview","confidence":0.98,
+         "reasonCode":"metadata_overview","semanticQuery":"","metadataOperation":"overview",
+         "documentFilter":"","fileTypeFilter":"","statusFilter":"","topK":5,"reason":"总览"}
+        """);
     assertEquals(QueryRoute.METADATA, decision.route());
     assertEquals("总览", decision.reason());
     assertThrows(IllegalArgumentException.class,
-        () -> parser.parseRoute("{\"route\":\"TOOLS\",\"reason\":\"越权\"}"));
+        () -> parser.parseRoute("""
+            {"version":"1","route":"TOOLS","intent":"tool","confidence":1,"reasonCode":"bad",
+             "semanticQuery":"","metadataOperation":"","documentFilter":"","fileTypeFilter":"",
+             "statusFilter":"","topK":5,"reason":"越权"}
+            """));
+  }
+
+  @Test
+  void rejectsUnknownRouteFieldsAndInvalidConfidence() {
+    String base = """
+        {"version":"1","route":"CHAT","intent":"greeting","confidence":%s,"reasonCode":"greeting",
+         "semanticQuery":"","metadataOperation":"","documentFilter":"","fileTypeFilter":"",
+         "statusFilter":"","topK":5,"reason":"hello"%s}
+        """;
+    assertThrows(IllegalArgumentException.class, () -> parser.parseRoute(base.formatted("2", "")));
+    assertThrows(IllegalArgumentException.class, () -> parser.parseRoute(base.formatted("1", ",\"extra\":true")));
+    assertThrows(IllegalArgumentException.class, () -> parser.parseRoute("```json\n" + base.formatted("1", "") + "\n```"));
   }
 
   @Test
