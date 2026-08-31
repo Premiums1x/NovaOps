@@ -118,6 +118,7 @@ mysql -uroot -p novaops < backend/sql/novaops_init.sql
 
 ```bash
 mysql -uroot -p novaops < backend/sql/refactor_rag_migration.sql
+mysql -uroot -p novaops < backend/sql/add_agent_chat_execution_audit.sql
 ```
 
 #### 2. 启动 Qdrant
@@ -232,13 +233,13 @@ app:
 
 详见 `docs/AGENT_MODULE_PLAN.md`（设计）与 `docs/AGENT_MODULE_PROGRESS.md`（验收记录）。
 
-Agent 对话会先返回受控路由结果（`route` 事件），并生成一份可公开展示的行动计划（`plan` 事件），再执行真实的处理管线。只有 `RAG` 路由会调用规划模型生成计划，失败或输出格式不合法时自动回退为固定的“检索知识库 → 生成回答 → 校验引用”计划，不会阻断回答；`METADATA` 只读取文档标题、类型、状态等元数据（不执行向量检索），`CHAT` 不访问知识库，两者使用固定计划。RAG 没有有效证据或回答未通过 grounding / chunkId 完整性校验时会安全拒答；会话首轮没有可补全的指代时也会跳过检索词改写调用。可通过 `NOVAOPS_AGENT_PLAN_ENABLED=false` 关闭额外规划调用。
+Agent 对话会先返回受控路由结果（`route` 事件），并根据路由确定性生成可公开展示的行动计划（`plan` 事件），再执行真实的处理管线；展示计划不再额外调用模型。路由器只接受版本化 JSON，支持 `METADATA`、`RAG`、`CHAT`、`CLARIFY`、`REJECT`；置信度不足或路由模型不可用时不会默认执行检索，而是返回澄清提示。`METADATA` 直接根据数据库元数据生成列表、详情和统计，不执行向量检索或回答模型；`CHAT` 仅处理路由器明确识别的合理通用对话。RAG 没有有效证据时不会调用回答模型，回答未通过 grounding / chunkId 完整性校验时会安全拒答；会话首轮没有可补全的指代时也会跳过检索词改写调用。路由、候选 chunk、有效 chunk、引用和校验结果会写入 `agent_message.execution_json`。任务型 Agent 的真实 Plan-and-Act 由独立引擎处理，不受对话展示计划调整影响。
 
 `POST /api/agent/chat` 的 SSE 事件如下：
 
 | 事件 | 用途 |
 | --- | --- |
-| `route` | 受控路由结果：`METADATA` / `RAG` / `CHAT` 及理由 |
+| `route` | 受控路由结果、意图、置信度、检索词与项目支持的过滤条件 |
 | `plan` | 一次性下发 `steps`，包含 `action/label/query/reason/status`，已按路由裁剪 |
 | `step` | 按 `action` 更新执行状态：`running/done/failed`，结果摘要放在 `payload` |
 | `delta` | 回答正文增量 |

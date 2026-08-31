@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class QuestionRouter {
+  private static final double MIN_CONFIDENCE = 0.7;
   private static final Pattern METADATA_PATTERN = Pattern.compile(
       "(知识库|资料库|文档库).*(有什么|有哪些|内容|文档|资料|主题|概览|概况|目录|清单|是否有|有没有)"
           + "|(有什么|有哪些|是否有|有没有).*(知识库|资料库|文档库)");
@@ -29,6 +30,9 @@ public class QuestionRouter {
       if (decision == null || decision.route() == null) {
         throw new IllegalArgumentException("empty route decision");
       }
+      if (decision.confidence() < MIN_CONFIDENCE) {
+        return RouteDecision.clarify("low_confidence", "路由置信度不足，需要补充问题信息");
+      }
       return decision;
     } catch (Exception ex) {
       return fallback(question);
@@ -43,6 +47,6 @@ public class QuestionRouter {
     if (CHAT_PATTERN.matcher(normalized).matches()) {
       return new RouteDecision(QueryRoute.CHAT, "路由模型不可用，依据明确闲聊特征安全降级");
     }
-    return new RouteDecision(QueryRoute.RAG, "路由模型不可用，默认进入受知识库约束的安全路径");
+    return RouteDecision.clarify("router_unavailable", "路由服务不可用，未执行知识库检索");
   }
 }

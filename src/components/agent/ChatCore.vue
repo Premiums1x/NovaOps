@@ -32,12 +32,16 @@ const routeLabel: Record<QueryRoute, string> = {
   METADATA: '元数据',
   RAG: '知识检索',
   CHAT: '通用对话',
+  CLARIFY: '需要澄清',
+  REJECT: '已拒绝',
 }
 
 const routeColor: Record<QueryRoute, string> = {
   METADATA: 'purple',
   RAG: 'blue',
   CHAT: 'cyan',
+  CLARIFY: 'orange',
+  REJECT: 'red',
 }
 
 const validationLabel: Partial<Record<ValidationStatus, string>> = {

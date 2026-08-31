@@ -12,16 +12,19 @@ public class AgentWorkflowOrchestrator {
   private final MetadataWorkflowHandler metadataHandler;
   private final RagPipeline ragPipeline;
   private final ChatWorkflowHandler chatHandler;
+  private final SafeResponseWorkflowHandler safeResponseHandler;
 
   public AgentWorkflowOrchestrator(
       QuestionRouter router,
       MetadataWorkflowHandler metadataHandler,
       RagPipeline ragPipeline,
-      ChatWorkflowHandler chatHandler) {
+      ChatWorkflowHandler chatHandler,
+      SafeResponseWorkflowHandler safeResponseHandler) {
     this.router = router;
     this.metadataHandler = metadataHandler;
     this.ragPipeline = ragPipeline;
     this.chatHandler = chatHandler;
+    this.safeResponseHandler = safeResponseHandler;
   }
 
   public WorkflowResult execute(String question, List<ConversationTurn> history) {
@@ -37,6 +40,7 @@ public class AgentWorkflowOrchestrator {
       case METADATA -> metadataHandler.execute(question, route);
       case RAG -> ragPipeline.execute(question, history, route).response();
       case CHAT -> chatHandler.execute(question, history, route);
+      case CLARIFY, REJECT -> safeResponseHandler.execute(route);
     };
   }
 }

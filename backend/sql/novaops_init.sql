@@ -133,6 +133,7 @@ create table agent_message (
   content mediumtext not null,
   citations_json text null,
   validation_passed tinyint null,
+  execution_json mediumtext null,
   created_at datetime not null default current_timestamp,
   index idx_agent_message_conversation (conversation_id,created_at)
 );

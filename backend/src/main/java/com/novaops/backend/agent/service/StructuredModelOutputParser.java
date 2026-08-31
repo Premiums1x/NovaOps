@@ -9,10 +9,18 @@ import com.novaops.backend.agent.model.QueryRoute;
 import com.novaops.backend.agent.model.RouteDecision;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class StructuredModelOutputParser {
+  private static final Set<String> ROUTE_FIELDS = Set.of(
+      "version", "route", "intent", "confidence", "reasonCode", "semanticQuery",
+      "metadataOperation", "documentFilter", "fileTypeFilter", "statusFilter", "topK", "reason");
+  private static final Set<String> METADATA_OPERATIONS = Set.of(
+      "overview", "list_documents", "document_detail", "status_summary", "file_type_summary");
+  private static final Pattern CODE = Pattern.compile("[a-z][a-z0-9_]{1,63}");
   private final ObjectMapper objectMapper;
 
   public StructuredModelOutputParser(ObjectMapper objectMapper) {
@@ -20,7 +28,15 @@ public class StructuredModelOutputParser {
   }
 
   public RouteDecision parseRoute(String raw) {
-    JsonNode root = parseObject(raw);
+    JsonNode root = parseStrictObject(raw);
+    root.fieldNames().forEachRemaining(field -> {
+      if (!ROUTE_FIELDS.contains(field)) {
+        throw new IllegalArgumentException("unsupported route field: " + field);
+      }
+    });
+    if (!"1".equals(requiredText(root, "version"))) {
+      throw new IllegalArgumentException("unsupported route schema version");
+    }
     String routeValue = requiredText(root, "route").toUpperCase();
     QueryRoute route;
     try {
@@ -28,7 +44,39 @@ public class StructuredModelOutputParser {
     } catch (IllegalArgumentException ex) {
       throw new IllegalArgumentException("unsupported route: " + routeValue, ex);
     }
-    return new RouteDecision(route, root.path("reason").asText(""));
+    double confidence = root.path("confidence").asDouble(-1);
+    if (confidence < 0 || confidence > 1) {
+      throw new IllegalArgumentException("confidence must be between 0 and 1");
+    }
+    String intent = requiredCode(root, "intent");
+    String reasonCode = requiredCode(root, "reasonCode");
+    String semanticQuery = textField(root, "semanticQuery");
+    String operation = textField(root, "metadataOperation");
+    if (route == QueryRoute.METADATA && !METADATA_OPERATIONS.contains(operation)) {
+      throw new IllegalArgumentException("unsupported metadata operation: " + operation);
+    }
+    if (!root.path("topK").isIntegralNumber()) {
+      throw new IllegalArgumentException("topK must be an integer");
+    }
+    Integer topK = root.path("topK").asInt();
+    if (topK < 1 || topK > 20) {
+      throw new IllegalArgumentException("topK must be between 1 and 20");
+    }
+    if (route == QueryRoute.RAG && semanticQuery.isBlank()) {
+      throw new IllegalArgumentException("semanticQuery must not be blank for RAG");
+    }
+    return new RouteDecision(
+        route,
+        intent,
+        confidence,
+        reasonCode,
+        semanticQuery,
+        operation,
+        textField(root, "documentFilter"),
+        textField(root, "fileTypeFilter"),
+        textField(root, "statusFilter"),
+        topK,
+        requiredText(root, "reason"));
   }
 
   public List<ChunkRelevance> parseRelevance(String raw) {
@@ -104,6 +152,41 @@ public class StructuredModelOutputParser {
     String value = node.path(field).asText("").trim();
     if (value.isEmpty()) {
       throw new IllegalArgumentException(field + " must not be blank");
+    }
+    return value;
+  }
+
+  private JsonNode parseStrictObject(String raw) {
+    if (raw == null || raw.isBlank()) {
+      throw new IllegalArgumentException("model output is empty");
+    }
+    String value = raw.trim();
+    if (!value.startsWith("{") || !value.endsWith("}")) {
+      throw new IllegalArgumentException("route output must be a single JSON object");
+    }
+    try {
+      JsonNode root = objectMapper.readTree(value);
+      if (!root.isObject()) {
+        throw new IllegalArgumentException("route output must be a JSON object");
+      }
+      return root;
+    } catch (Exception ex) {
+      throw new IllegalArgumentException("invalid route JSON output", ex);
+    }
+  }
+
+  private String textField(JsonNode node, String field) {
+    JsonNode value = node.path(field);
+    if (!value.isTextual()) {
+      throw new IllegalArgumentException(field + " must be a string");
+    }
+    return value.asText().trim();
+  }
+
+  private String requiredCode(JsonNode node, String field) {
+    String value = requiredText(node, field);
+    if (!CODE.matcher(value).matches()) {
+      throw new IllegalArgumentException(field + " must be snake_case");
     }
     return value;
   }

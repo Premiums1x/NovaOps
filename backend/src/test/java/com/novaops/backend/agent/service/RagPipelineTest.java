@@ -8,9 +8,9 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.novaops.backend.agent.model.ChunkRelevance;
@@ -47,7 +47,7 @@ class RagPipelineTest {
 
   @Test
   void zeroRetrievedChunksNeverCallsAnswerGenerator() {
-    when(retriever.retrieve(anyString(), anyInt(), anyDouble()))
+    when(retriever.retrieve(anyString(), anyInt(), anyDouble(), anyString()))
         .thenReturn(new RetrievalResult(List.of()));
 
     var outcome = pipeline.execute("怎么安装？", List.of(), route);
@@ -59,8 +59,23 @@ class RagPipelineTest {
   }
 
   @Test
+  void usesRouterSemanticQueryTopKAndDocumentFilter() {
+    RouteDecision controlledRoute = new RouteDecision(
+        QueryRoute.RAG, "knowledge_question", 0.95, "specific_kb_question", "Element Plus X 安装",
+        "", "Guide", "", "", 3, "具体知识问题");
+    when(retriever.retrieve(anyString(), anyInt(), anyDouble(), anyString()))
+        .thenReturn(new RetrievalResult(List.of()));
+
+    pipeline.execute("这个怎么装？", List.of(), controlledRoute);
+
+    verify(retriever).retrieve("Element Plus X 安装", 3, 0.55, "Guide");
+    verify(gateway, never()).rewrite(anyString(), anyList());
+    verify(gateway, never()).generateRagAnswer(anyString(), anyList());
+  }
+
+  @Test
   void successfulAnswerUsesOriginalRetrieverChunkAsEvidence() {
-    when(retriever.retrieve(anyString(), anyInt(), anyDouble()))
+    when(retriever.retrieve(anyString(), anyInt(), anyDouble(), anyString()))
         .thenReturn(new RetrievalResult(List.of(chunk)));
     when(gateway.validateRetrieval(anyString(), anyList()))
         .thenReturn(List.of(new ChunkRelevance("chunk-12", true, 0.93, "直接回答安装方式")));
@@ -80,7 +95,7 @@ class RagPipelineTest {
 
   @Test
   void skipsQueryRewriteWithoutConversationHistory() {
-    when(retriever.retrieve(anyString(), anyInt(), anyDouble()))
+    when(retriever.retrieve(anyString(), anyInt(), anyDouble(), anyString()))
         .thenReturn(new RetrievalResult(List.of()));
 
     pipeline.execute("怎么安装？", List.of(), route);
@@ -93,7 +108,7 @@ class RagPipelineTest {
 
   @Test
   void fabricatedCitationRetriesOnceThenFailsClosed() {
-    when(retriever.retrieve(anyString(), anyInt(), anyDouble()))
+    when(retriever.retrieve(anyString(), anyInt(), anyDouble(), anyString()))
         .thenReturn(new RetrievalResult(List.of(chunk)));
     when(gateway.validateRetrieval(anyString(), anyList()))
         .thenReturn(List.of(new ChunkRelevance("chunk-12", true, 0.9, "相关")));
@@ -111,7 +126,7 @@ class RagPipelineTest {
 
   @Test
   void noValidatedChunksNeverCallsAnswerGenerator() {
-    when(retriever.retrieve(anyString(), anyInt(), anyDouble()))
+    when(retriever.retrieve(anyString(), anyInt(), anyDouble(), anyString()))
         .thenReturn(new RetrievalResult(List.of(chunk)));
     when(gateway.validateRetrieval(anyString(), anyList()))
         .thenReturn(List.of(new ChunkRelevance("chunk-12", false, 0.1, "不相关")));
@@ -126,7 +141,7 @@ class RagPipelineTest {
 
   @Test
   void unsupportedGroundingRetriesOnceThenFailsClosed() {
-    when(retriever.retrieve(anyString(), anyInt(), anyDouble()))
+    when(retriever.retrieve(anyString(), anyInt(), anyDouble(), anyString()))
         .thenReturn(new RetrievalResult(List.of(chunk)));
     when(gateway.validateRetrieval(anyString(), anyList()))
         .thenReturn(List.of(new ChunkRelevance("chunk-12", true, 0.9, "相关")));

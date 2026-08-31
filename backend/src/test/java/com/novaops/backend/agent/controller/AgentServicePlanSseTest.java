@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
@@ -23,14 +23,13 @@ import com.novaops.backend.agent.model.QueryRoute;
 import com.novaops.backend.agent.model.RouteDecision;
 import com.novaops.backend.agent.model.ValidationStatus;
 import com.novaops.backend.agent.model.WorkflowResult;
-import com.novaops.backend.agent.service.AgentPlanParser;
-import com.novaops.backend.agent.service.AgentPlanner;
 import com.novaops.backend.agent.service.AgentService;
 import com.novaops.backend.agent.service.AgentWorkflowOrchestrator;
 import com.novaops.backend.common.security.CurrentSession;
 import com.novaops.backend.common.security.RequestContext;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -75,21 +74,9 @@ class AgentServicePlanSseTest {
             ValidationStatus.NO_EVIDENCE,
             "no_retrieved_chunks"));
 
-    AgentPlanner planner = new AgentPlanner(
-        question -> """
-            {"steps":[
-              {"action":"search_kb","query":"NovaOps 知识库使用说明","reason":"改写检索词"},
-              {"action":"answer","reason":"组织回答"},
-              {"action":"validate","reason":"校验引用"}
-            ]}
-            """,
-        new AgentPlanParser(new ObjectMapper()),
-        true);
-
     AgentService service = new AgentService(
         mapper,
         orchestrator,
-        planner,
         new ObjectMapper(),
         Runnable::run,
         120000);
@@ -113,6 +100,12 @@ class AgentServicePlanSseTest {
         .andExpect(content().string(containsString("\"status\":\"done\"")))
         .andExpect(content().string(containsString("event:done")));
     verify(orchestrator).execute(anyString(), anyList(), any());
+    ArgumentCaptor<AgentMessageRecord> savedMessages = ArgumentCaptor.forClass(AgentMessageRecord.class);
+    verify(mapper, times(2)).insertMessage(savedMessages.capture());
+    assertThat(savedMessages.getAllValues().get(1).getExecutionJson())
+        .contains("\"retrievalExecuted\":true")
+        .contains("\"retrievedCount\":0")
+        .contains("\"answerModelCalled\":false");
   }
 
   @Test
@@ -140,11 +133,9 @@ class AgentServicePlanSseTest {
             ValidationStatus.NOT_APPLICABLE,
             "direct_chat_without_retrieval"));
 
-    AgentPlanner planner = mock(AgentPlanner.class);
     AgentService service = new AgentService(
         mapper,
         orchestrator,
-        planner,
         new ObjectMapper(),
         Runnable::run,
         120000);
@@ -166,6 +157,5 @@ class AgentServicePlanSseTest {
     assertThat(completed.getResponse().getContentAsString(StandardCharsets.UTF_8))
         .doesNotContain("\"action\":\"search_kb\"")
         .doesNotContain("\"action\":\"validate\"");
-    verify(planner, never()).plan(anyString());
   }
 }
