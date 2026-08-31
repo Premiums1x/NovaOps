@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { cancelTaskApi, confirmTaskApi, createTaskApi, getTaskApi, listTasksApi, streamTaskEvents } from '@/api/agentTask'
 import type { AgentTaskDto } from '@/api/agentTask'
@@ -161,6 +161,8 @@ const startNew = () => {
 }
 
 onMounted(refreshRecent)
+//离开页面时中断进行中的 SSE 流，避免后台任务与状态更新继续打到已卸载组件
+onBeforeUnmount(() => controller?.abort())
 </script>
 
 <template>

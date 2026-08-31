@@ -36,7 +36,13 @@ public class QdrantVectorGateway {
     this.properties = properties;
     this.embeddingModel = embeddingModel;
     this.objectMapper = objectMapper;
-    RestClient.Builder configured = builder.baseUrl(properties.getQdrantBaseUrl());
+    // Qdrant 是外部依赖：不设超时的话，服务一旦挂起会无限期阻塞摄取与检索线程
+    var requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+    requestFactory.setConnectTimeout(3000);
+    requestFactory.setReadTimeout(10000);
+    RestClient.Builder configured = builder
+        .baseUrl(properties.getQdrantBaseUrl())
+        .requestFactory(requestFactory);
     if (StringUtils.hasText(properties.getQdrantApiKey())) {
       configured.defaultHeader("api-key", properties.getQdrantApiKey());
     }
