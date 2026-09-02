@@ -64,4 +64,38 @@ describe('streamSse', () => {
       status: 'running',
     })
   })
+
+  it('delivers task events and unknown events, skipping broken frames without ending the stream', async () => {
+    const stream = [
+      'event: plan\ndata: {"steps":[{"seq":1,"tool":"ticket.search"}]}\n\n',
+      'event: audit\ndata: {"tool":"ticket.transfer","write":true}\n\n',
+      'event: confirm_required\ndata: {"confirmationId":"confirm-123","tool":"ticket.transfer"}\n\n',
+      'event: result\ndata: {"summary":"任务完成"}\n\n',
+      'event: heartbeat\ndata: {"ts":1725300000}\n\n',
+      'event: step\ndata: {"seq":1,"tool":"broken\n\n',
+      'event: done\ndata: {}\n\n',
+    ].join('')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream;charset=UTF-8' } }),
+      ),
+    )
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const events: Array<[string, Record<string, unknown>]> = []
+
+    await streamSse('/agent/tasks/task-1/stream', {}, (event, data) => events.push([event, data]), new AbortController().signal)
+
+    expect(events.map(([event]) => event)).toEqual([
+      'plan',
+      'audit',
+      'confirm_required',
+      'result',
+      'heartbeat',
+      'done',
+    ])
+    expect(events[2]?.[1]).toEqual({ confirmationId: 'confirm-123', tool: 'ticket.transfer' })
+    expect(warnSpy).toHaveBeenCalledWith('[sse] unknown event:', 'heartbeat')
+    warnSpy.mockRestore()
+  })
 })

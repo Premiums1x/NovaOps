@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import { streamSse } from '@/utils/sse'
+import type { TaskSseEvent } from '@/types/agent'
 
 export interface AgentTaskDto {
   id: string
@@ -23,7 +24,7 @@ export interface AgentTaskStepDto {
   createdAt: string | null
 }
 
-export type AgentTaskEventHandler = (event: string, data: Record<string, unknown>) => void
+export type AgentTaskEventHandler = (event: TaskSseEvent, data: Record<string, unknown>) => void
 
 export const createTaskApi = (goal: string) => request.post<{ taskId: string }>('/agent/tasks', { goal })
 
@@ -38,4 +39,4 @@ export const getTaskApi = (id: string) =>
 export const listTasksApi = () => request.get<AgentTaskDto[]>('/agent/tasks')
 
 export const streamTaskEvents = (id: string, onEvent: AgentTaskEventHandler, signal: AbortSignal) =>
-  streamSse(`/agent/tasks/${id}/stream`, {}, onEvent as (e: string, d: Record<string, unknown>) => void, signal)
+  streamSse<TaskSseEvent>(`/agent/tasks/${id}/stream`, {}, onEvent, signal)

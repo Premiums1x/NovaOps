@@ -24,4 +24,6 @@ export interface ChatMessageDto {
 }
 export interface ConversationDto { id:string; userId:string; title:string; createdAt:string; updatedAt:string }
 export interface ConversationDetailDto { conversation:ConversationDto; messages:Array<{id:string;conversationId:string;role:'user'|'assistant';content:string;citationsJson?:string;executionJson?:string;validationPassed?:boolean;createdAt:string}> }
-export type AgentSseEvent = 'route'|'plan'|'step'|'delta'|'citation'|'evidence'|'meta'|'done'|'error'
+export type ChatSseEvent = 'route'|'plan'|'step'|'delta'|'citation'|'evidence'|'meta'|'done'|'error'
+export type TaskSseEvent = 'plan'|'step'|'audit'|'confirm_required'|'result'|'error'
+export type AgentSseEvent = ChatSseEvent|TaskSseEvent
