@@ -21,6 +21,7 @@ export interface AgentTaskStepDto {
   status: string
   argsJson: string | null
   observationJson: string | null
+  revision?: number | null
   createdAt: string | null
 }
 

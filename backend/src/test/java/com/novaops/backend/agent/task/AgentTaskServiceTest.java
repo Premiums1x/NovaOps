@@ -366,4 +366,27 @@ class AgentTaskServiceTest {
     assertEquals(0.0, stats.get("avgSteps"));
     assertEquals(0L, stats.get("writeOperations"));
   }
+
+  @Test
+  void detailStepViewIncludesRevision() {
+    AgentTaskRecord record = new AgentTaskRecord();
+    record.setId("task-rev");
+    record.setUserId("user-1");
+    when(taskMapper.findTask("task-rev", "user-1")).thenReturn(record);
+    AgentTaskStepRecord step = new AgentTaskStepRecord();
+    step.setId("step-1");
+    step.setTaskId("task-rev");
+    step.setSeq(2);
+    step.setKind("tool");
+    step.setToolName("test.echo");
+    step.setStatus("DONE");
+    step.setRevision(2);
+    when(taskMapper.listSteps("task-rev")).thenReturn(List.of(step));
+
+    Map<String, Object> detail = service.detail(session, "task-rev");
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> steps = (List<Map<String, Object>>) detail.get("steps");
+    assertEquals(2, steps.get(0).get("revision"));
+  }
 }

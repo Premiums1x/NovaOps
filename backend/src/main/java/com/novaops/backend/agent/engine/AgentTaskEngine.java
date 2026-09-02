@@ -78,7 +78,7 @@ public class AgentTaskEngine {
         emit(listener, "step", outcome.seq(), Map.of(
             "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
             "status", outcome.status(), "observation", outcome.observation(),
-            "args", safeArgs(denied.args())));
+            "args", safeArgs(denied.args()), "revision", state.revisions()));
         emit(listener, "audit", outcome.seq(),
             auditPayload(denied, outcome, false, false));
         ReplanOutcome replan = tryReplan(state, listener, "用户拒绝了一次写操作");
@@ -160,7 +160,7 @@ public class AgentTaskEngine {
         emit(listener, "step", outcome.seq(), Map.of(
             "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
             "status", outcome.status(), "observation", outcome.observation(),
-            "args", safeArgs(step.args())));
+            "args", safeArgs(step.args()), "revision", state.revisions()));
         emit(listener, "audit", outcome.seq(),
             auditPayload(step, outcome, true, confirmed));
 
@@ -229,7 +229,7 @@ public class AgentTaskEngine {
         emit(listener, "step", outcome.seq(), Map.of(
             "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
             "status", outcome.status(), "observation", observation,
-            "args", safeArgs(step.args())));
+            "args", safeArgs(step.args()), "revision", state.revisions()));
         emit(listener, "audit", outcome.seq(),
             auditPayload(step, outcome, executed, false));
     ReplanOutcome replan = tryReplan(state, listener, observation);

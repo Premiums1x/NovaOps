@@ -386,6 +386,27 @@ class AgentTaskEngineTest {
   }
 
   @Test
+  void stepEventsCarryPlanRevisionAndIncrementAfterReplan() {
+    ScriptedGateway gateway = new ScriptedGateway();
+    gateway.plans.add(TaskPlan.of(steps("missing.tool", "test.echo")));
+    gateway.replans.add(TaskPlan.of(steps("test.echo")));
+    ToolRegistry registry = registry();
+    EngineState state = state(registry, "重规划版本", Set.of());
+    AgentTaskEngine engine = new AgentTaskEngine(
+        registry, gateway, config(10, 2, 2000, 1), Runnable::run, new ObjectMapper());
+
+    List<EngineEvent> events = run(engine, state);
+
+    List<Integer> revisions = events.stream()
+        .filter(event -> "step".equals(event.type()))
+        .map(event -> (Integer) event.payload().get("revision"))
+        .toList();
+    // 初始计划的步骤 revision=0，重规划后的新步骤 revision=1
+    assertEquals(List.of(0, 1), revisions);
+    assertEquals(1, gateway.replanCalls);
+  }
+
+  @Test
   void engineEventsCarryTimestamps() {
     ScriptedGateway gateway = new ScriptedGateway();
     gateway.plans.add(TaskPlan.of(steps("test.echo")));

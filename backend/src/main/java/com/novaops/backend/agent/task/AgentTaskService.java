@@ -357,8 +357,13 @@ public class AgentTaskService {
       record.setObservationJson(toJson(Map.of("at", event.at(), "observation", observation == null ? Map.of() : observation)));
     }
     record.setStatus(kind.equals("confirm") ? "AWAITING_CONFIRM" : status);
-    record.setRevision(0);
+    record.setRevision(payloadRevision(event));
     return record;
+  }
+
+  /** 步骤所属的计划版本：引擎在重规划后递增；旧事件缺失时按初始计划 0 处理。 */
+  private int payloadRevision(EngineEvent event) {
+    return event.payload().get("revision") instanceof Number number ? number.intValue() : 0;
   }
 
   private AgentAuditRecord auditRecord(CurrentSession owner, String taskId, EngineEvent event) {
@@ -388,6 +393,7 @@ public class AgentTaskService {
     view.put("status", record.getStatus());
     view.put("argsJson", record.getArgsJson());
     view.put("observationJson", record.getObservationJson());
+    view.put("revision", record.getRevision());
     view.put("createdAt", record.getCreatedAt());
     return view;
   }
