@@ -106,6 +106,10 @@ const onConfirm = async (approved: boolean) => {
     await confirmTaskApi(taskId.value, confirmationId, approved)
     confirmInfo.value = null
     confirmVisible.value = false
+    // 历史恢复场景没有活动 SSE 流：确认/拒绝后重拉详情刷新时间线
+    if (viewingHistory.value) {
+      await openHistory(taskId.value)
+    }
   } catch (caught) {
     message.error((caught as Error).message || '确认失败')
   }
@@ -147,6 +151,17 @@ const openHistory = async (id: string) => {
         observation: step.observationJson || '',
       }))
     confirmInfo.value = null
+    // 挂起确认的确认令牌只在内存会话里：刷新后从 detail 恢复确认弹窗
+    const pending = detail.pendingConfirmation
+    if (pending) {
+      confirmInfo.value = {
+        confirmationId: String(pending.confirmationId || ''),
+        tool: String(pending.tool || ''),
+        title: String(pending.title || pending.tool || ''),
+        preview: (pending.preview || {}) as Record<string, unknown>,
+      }
+      confirmVisible.value = true
+    }
   } catch (caught) {
     message.error((caught as Error).message || '任务详情加载失败')
   }

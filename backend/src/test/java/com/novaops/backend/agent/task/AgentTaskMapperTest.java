@@ -136,4 +136,36 @@ class AgentTaskMapperTest {
       assertEquals("巡检完成", after.getResultText());
     }
   }
+
+  @Test
+  void findStaleTaskIdsReturnsOnlyNonTerminalOlderThanCutoff() throws Exception {
+    try (SqlSession session = factory.openSession(true)) {
+      AgentTaskMapper mapper = session.getMapper(AgentTaskMapper.class);
+      insertTask(mapper, "stale-running", "RUNNING");
+      insertTask(mapper, "stale-awaiting", "AWAITING_CONFIRM");
+      insertTask(mapper, "stale-done", "DONE");
+      insertTask(mapper, "fresh-running", "RUNNING");
+
+      // 把前三个任务的 updated_at 拨回 2 小时前
+      try (var connection = factory.getConfiguration().getEnvironment().getDataSource().getConnection();
+          var statement = connection.createStatement()) {
+        statement.execute("update agent_task set updated_at = dateadd(hour, -2, current_timestamp) "
+            + "where id in ('stale-running','stale-awaiting','stale-done')");
+      }
+
+      var staleIds = mapper.findStaleTaskIds(java.time.LocalDateTime.now().minusMinutes(30));
+
+      org.assertj.core.api.Assertions.assertThat(staleIds)
+          .containsExactlyInAnyOrder("stale-running", "stale-awaiting");
+    }
+  }
+
+  private static void insertTask(AgentTaskMapper mapper, String id, String status) {
+    AgentTaskRecord record = new AgentTaskRecord();
+    record.setId(id);
+    record.setUserId("user-1");
+    record.setGoal("清扫测试");
+    record.setStatus(status);
+    mapper.insertTask(record);
+  }
 }

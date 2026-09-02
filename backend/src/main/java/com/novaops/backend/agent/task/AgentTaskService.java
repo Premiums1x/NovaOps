@@ -160,17 +160,87 @@ public class AgentTaskService {
     if (task == null) {
       throw new BusinessException(404, "任务不存在");
     }
-    List<Map<String, Object>> steps = taskMapper.listSteps(taskId).stream()
+    List<AgentTaskStepRecord> stepRecords = taskMapper.listSteps(taskId);
+    List<Map<String, Object>> steps = stepRecords.stream()
         .map(this::toStepView)
         .toList();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("task", task);
     view.put("steps", steps);
+    // 挂起确认的确认令牌只存在内存会话里，这里显式回传让前端刷新后仍能恢复确认弹窗
+    Map<String, Object> pending = pendingConfirmationView(taskId, stepRecords);
+    if (pending != null) {
+      view.put("pendingConfirmation", pending);
+    }
     return view;
+  }
+
+  /** 挂起确认的恢复信息；preview 从步骤表 confirm 记录的 observationJson 恢复。 */
+  private Map<String, Object> pendingConfirmationView(
+      String taskId, List<AgentTaskStepRecord> stepRecords) {
+    AgentTaskSession agentSession = sessions.get(taskId);
+    if (agentSession == null || agentSession.isTerminal()) {
+      return null;
+    }
+    EngineState state = agentSession.state();
+    String confirmationId = state.pendingConfirmationId();
+    var pendingStep = state.pendingStep();
+    if (confirmationId == null || pendingStep == null) {
+      return null;
+    }
+    // 同一任务同时至多一个挂起确认，取最后一条 confirm 记录（listSteps 按 seq 排序）
+    String previewJson = null;
+    for (AgentTaskStepRecord record : stepRecords) {
+      if ("confirm".equals(record.getKind()) && record.getObservationJson() != null) {
+        previewJson = record.getObservationJson();
+      }
+    }
+    Map<String, Object> pending = new LinkedHashMap<>();
+    pending.put("confirmationId", confirmationId);
+    pending.put("tool", pendingStep.tool());
+    pending.put("title", toolRegistry.find(pendingStep.tool())
+        .map(handle -> handle.descriptor().title())
+        .orElse(pendingStep.tool()));
+    pending.put("why", pendingStep.why() == null ? "" : pendingStep.why());
+    pending.put("args", pendingStep.args() == null ? Map.of() : pendingStep.args());
+    pending.put("preview", parsePreview(previewJson));
+    return pending;
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> parsePreview(String previewJson) {
+    if (previewJson == null || previewJson.isBlank()) {
+      return Map.of();
+    }
+    try {
+      Object parsed = objectMapper.readValue(previewJson, Object.class);
+      return parsed instanceof Map ? (Map<String, Object>) parsed : Map.of();
+    } catch (Exception ex) {
+      return Map.of();
+    }
   }
 
   public List<AgentTaskRecord> list(CurrentSession session) {
     return taskMapper.listTasks(session.getUserId(), 50);
+  }
+
+  /**
+   * TTL 清扫：把超过阈值仍处非终态、且内存会话已不存在的任务置为 FAILED
+   * （服务重启后 RUNNING/AWAITING_CONFIRM 记录的兜底回收）。返回清扫数量。
+   */
+  public int sweepStaleTasks(java.time.Duration staleThreshold) {
+    java.time.LocalDateTime cutoff = java.time.LocalDateTime.now().minus(staleThreshold);
+    List<String> staleIds = taskMapper.findStaleTaskIds(cutoff);
+    int swept = 0;
+    for (String taskId : staleIds) {
+      // 有活跃内存会话的任务（运行中或挂起确认）不误杀
+      if (sessions.containsKey(taskId)) {
+        continue;
+      }
+      taskMapper.finishTask(taskId, "FAILED", null, "任务会话已失效，请重新发起");
+      swept++;
+    }
+    return swept;
   }
 
   private AgentTaskSession requireSession(CurrentSession session, String taskId) {
@@ -276,10 +346,11 @@ public class AgentTaskService {
     if (sessions.size() < MAX_SESSIONS) {
       return;
     }
-    sessions.entrySet().stream()
-        .filter(entry -> entry.getValue().isTerminal())
-        .map(Map.Entry::getKey)
-        .limit(Math.max(1, sessions.size() - MAX_SESSIONS + 1))
-        .forEach(sessions::remove);
+    // 先清终态会话腾位；若仍达上限（全部在跑/挂起），告警放行，
+    // 孤儿会话由 AgentTaskCleanupTask 的 TTL 清扫兜底回收
+    sessions.entrySet().removeIf(entry -> entry.getValue().isTerminal());
+    if (sessions.size() >= MAX_SESSIONS) {
+      log.warn("agent task sessions at capacity ({}), 全部为非终态会话，等待 TTL 清扫回收", MAX_SESSIONS);
+    }
   }
 }

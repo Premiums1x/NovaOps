@@ -9,4 +9,5 @@
   <select id="listTasks" resultType="com.novaops.backend.agent.task.model.AgentTaskRecord">select * from agent_task where user_id=#{userId} order by created_at desc limit #{limit}</select>
   <insert id="insertStep">insert into agent_task_step(id,task_id,seq,kind,tool_name,args_json,observation_json,status,revision,created_at) values(#{id},#{taskId},#{seq},#{kind},#{toolName},#{argsJson},#{observationJson},#{status},#{revision},now())</insert>
   <select id="listSteps" resultType="com.novaops.backend.agent.task.model.AgentTaskStepRecord">select * from agent_task_step where task_id=#{taskId} order by seq,id</select>
+  <select id="findStaleTaskIds" resultType="string">select id from agent_task where status in ('RUNNING','AWAITING_CONFIRM') and updated_at &lt; #{cutoff} order by updated_at limit 200</select>
 </mapper>

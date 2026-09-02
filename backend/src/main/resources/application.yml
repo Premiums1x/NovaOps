@@ -88,6 +88,7 @@ app:
       max-revisions: ${NOVAOPS_AGENT_TASK_MAX_REVISIONS:2}
       observation-max-chars: ${NOVAOPS_AGENT_TASK_OBSERVATION_MAX_CHARS:2000}
       step-timeout-seconds: ${NOVAOPS_AGENT_TASK_STEP_TIMEOUT_SECONDS:20}
+      stale-minutes: ${NOVAOPS_AGENT_TASK_STALE_MINUTES:30}
     mcp:
       server:
         token: ${NOVAOPS_AGENT_MCP_SERVER_TOKEN:}

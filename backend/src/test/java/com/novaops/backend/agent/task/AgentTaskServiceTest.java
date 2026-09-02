@@ -1,6 +1,9 @@
 package com.novaops.backend.agent.task;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -8,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -15,16 +19,31 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novaops.backend.agent.engine.AgentTaskEngine;
+import com.novaops.backend.agent.engine.AgentTool;
+import com.novaops.backend.agent.engine.AgentToolCategory;
+import com.novaops.backend.agent.engine.AgentToolExecutor;
+import com.novaops.backend.agent.engine.TaskModelGateway;
+import com.novaops.backend.agent.engine.ToolDescriptor;
 import com.novaops.backend.agent.engine.ToolRegistry;
+import com.novaops.backend.agent.engine.ToolContext;
+import com.novaops.backend.agent.engine.ToolResult;
+import com.novaops.backend.agent.engine.ToolSchema;
+import com.novaops.backend.agent.engine.model.EngineConfig;
 import com.novaops.backend.agent.engine.model.EngineEvent;
 import com.novaops.backend.agent.engine.model.EngineListener;
 import com.novaops.backend.agent.engine.model.EngineState;
+import com.novaops.backend.agent.engine.model.PlannedStep;
+import com.novaops.backend.agent.engine.model.StepOutcome;
+import com.novaops.backend.agent.engine.model.TaskPlan;
 import com.novaops.backend.agent.task.mapper.AgentAuditMapper;
 import com.novaops.backend.agent.task.mapper.AgentTaskMapper;
+import com.novaops.backend.agent.task.model.AgentTaskRecord;
+import com.novaops.backend.agent.task.model.AgentTaskStepRecord;
 import com.novaops.backend.auth.dto.MenuDataResponse;
 import com.novaops.backend.auth.service.AuthService;
 import com.novaops.backend.common.exception.BusinessException;
 import com.novaops.backend.common.security.CurrentSession;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
@@ -64,8 +83,8 @@ class AgentTaskServiceTest {
         new ObjectMapper(), Runnable::run);
     MenuDataResponse menu = new MenuDataResponse();
     menu.setPermissions(List.of("agent:task"));
-    when(authService.menu(any())).thenReturn(menu);
-    when(toolRegistry.toolsFor(any())).thenReturn(List.of());
+    lenient().when(authService.menu(any())).thenReturn(menu);
+    lenient().when(toolRegistry.toolsFor(any())).thenReturn(List.of());
   }
 
   @Test
@@ -117,5 +136,121 @@ class AgentTaskServiceTest {
     assertThrows(BusinessException.class, () -> rejectingService.create(session, "巡检"));
 
     verify(taskMapper).finishTask(anyString(), eq("FAILED"), isNull(), eq("服务繁忙，请稍后重试"));
+  }
+
+  // ---------- T4：挂起确认恢复 / TTL 清扫 / 会话驱逐 ----------
+
+  @AgentTool(name = "test.write", title = "写操作", description = "两段式写操作",
+      category = AgentToolCategory.WRITE)
+  static class PausingWriteTool implements AgentToolExecutor {
+    @Override
+    public ToolResult execute(ToolContext ctx, Map<String, Object> args, boolean confirmed) {
+      if (!confirmed) {
+        return ToolResult.needsConfirmation(Map.of("ticketId", "A-1", "action", "assign"));
+      }
+      return ToolResult.ok(Map.of("done", true));
+    }
+
+    @Override
+    public ToolSchema inputSchema() {
+      return ToolSchema.object();
+    }
+  }
+
+  /** 每次计划都包含一个未确认写步骤：引擎会停在 AWAITING_CONFIRMATION。 */
+  static class PausePlanGateway implements TaskModelGateway {
+    @Override
+    public TaskPlan plan(String goal, List<ToolDescriptor> tools) {
+      return TaskPlan.of(List.of(
+          new PlannedStep(1, "test.write", Map.of("id", "A-1"), "需要确认的写操作")));
+    }
+
+    @Override
+    public TaskPlan replan(String goal, List<ToolDescriptor> tools, List<StepOutcome> history) {
+      return TaskPlan.of(List.of());
+    }
+
+    @Override
+    public String summarize(String goal, List<StepOutcome> history) {
+      return "完成";
+    }
+  }
+
+  /** 真实引擎 + 挂起写工具的服务：任务创建后停在等待确认状态。 */
+  private AgentTaskService pausedService() {
+    ToolRegistry registry = new ToolRegistry(List.of(new PausingWriteTool()));
+    AgentTaskEngine realEngine = new AgentTaskEngine(
+        registry, new PausePlanGateway(), new EngineConfig(10, 2, 2000, 20, 1),
+        Runnable::run, new ObjectMapper());
+    return new AgentTaskService(
+        realEngine, registry, authService, taskMapper, auditMapper,
+        new ObjectMapper(), Runnable::run);
+  }
+
+  @Test
+  void detailExposesPendingConfirmationForSuspendedTask() {
+    AgentTaskService suspended = pausedService();
+    String taskId = (String) suspended.create(session, "挂起任务").get("taskId");
+
+    AgentTaskRecord record = new AgentTaskRecord();
+    record.setId(taskId);
+    record.setUserId("user-1");
+    record.setGoal("挂起任务");
+    record.setStatus("AWAITING_CONFIRM");
+    when(taskMapper.findTask(taskId, "user-1")).thenReturn(record);
+    AgentTaskStepRecord confirmStep = new AgentTaskStepRecord();
+    confirmStep.setId("step-1");
+    confirmStep.setTaskId(taskId);
+    confirmStep.setSeq(1);
+    confirmStep.setKind("confirm");
+    confirmStep.setToolName("test.write");
+    confirmStep.setObservationJson("{\"ticketId\":\"A-1\",\"action\":\"assign\"}");
+    confirmStep.setStatus("AWAITING_CONFIRM");
+    when(taskMapper.listSteps(taskId)).thenReturn(List.of(confirmStep));
+
+    Map<String, Object> detail = suspended.detail(session, taskId);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> pending = (Map<String, Object>) detail.get("pendingConfirmation");
+
+    assertNotNull(pending);
+    assertEquals("test.write", pending.get("tool"));
+    assertEquals("写操作", pending.get("title"));
+    assertEquals(suspended.sessionIfPresent(taskId).state().pendingConfirmationId(),
+        pending.get("confirmationId"));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> preview = (Map<String, Object>) pending.get("preview");
+    assertEquals("A-1", preview.get("ticketId"));
+  }
+
+  @Test
+  void sweepStaleTasksSkipsActiveSessionsAndFailsOrphans() {
+    AgentTaskService suspended = pausedService();
+    String activeId = (String) suspended.create(session, "活跃挂起任务").get("taskId");
+
+    when(taskMapper.findStaleTaskIds(any())).thenReturn(List.of(activeId, "task_orphan"));
+
+    int swept = suspended.sweepStaleTasks(java.time.Duration.ofMinutes(30));
+
+    assertEquals(1, swept);
+    verify(taskMapper).finishTask(
+        eq("task_orphan"), eq("FAILED"), isNull(), eq("任务会话已失效，请重新发起"));
+    verify(taskMapper, never()).finishTask(eq(activeId), any(), any(), any());
+  }
+
+  @Test
+  void evictAllowsCapacityOverflowWithWarningThenSweepsTerminal() {
+    AgentTaskService suspended = pausedService();
+    for (int i = 0; i < 100; i++) {
+      suspended.create(session, "批量任务" + i);
+    }
+    // 达到 100 上限后继续创建不抛错（告警放行）
+    Map<String, Object> overflow = assertDoesNotThrow(() -> suspended.create(session, "超限任务"));
+    String overflowId = (String) overflow.get("taskId");
+    assertNotNull(overflowId);
+
+    // 终态会话在下次 create 时被驱逐
+    suspended.cancel(session, overflowId);
+    assertDoesNotThrow(() -> suspended.create(session, "驱逐后任务"));
+    assertNull(suspended.sessionIfPresent(overflowId));
   }
 }

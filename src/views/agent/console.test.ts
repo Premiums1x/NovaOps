@@ -55,7 +55,11 @@ const stubs = {
     props: ['open'],
     template: '<div class="modal-stub" v-if="open"><slot /><button class="modal-ok" @click="$emit(\'ok\')">确认</button><button class="modal-cancel" @click="$emit(\'cancel\')">拒绝</button></div>',
   },
-  'a-list': { template: '<div><slot /></div>' },
+  'a-list': {
+    props: ['dataSource'],
+    template:
+      '<div><template v-for="item in dataSource || []" :key="item.id"><slot name="renderItem" :item="item" /></template><slot /></div>',
+  },
   'a-list-item': { template: '<div><slot /></div>' },
   'a-empty': { template: '<div class="empty-stub" />' },
 }
@@ -129,5 +133,40 @@ describe('AgentConsole', () => {
     await flushPromises()
 
     expect(wrapper.get('.alert-stub').text()).toContain('已达最大步数上限')
+  })
+
+  it('restores confirm dialog from pending task detail and re-pulls detail after approval', async () => {
+    const task = { id: 'task-h1', goal: '转派工单', status: 'AWAITING_CONFIRM', createdAt: '', updatedAt: '' }
+    const { getTaskApi, listTasksApi } = await import('@/api/agentTask')
+    vi.mocked(listTasksApi).mockResolvedValue([task])
+    vi.mocked(getTaskApi)
+      .mockResolvedValueOnce({
+        task,
+        steps: [],
+        pendingConfirmation: {
+          confirmationId: 'confirm-789',
+          tool: 'ticket.assign',
+          title: '指派工单',
+          preview: { ticketId: 'A-1', assignee: 'Jerry' },
+        },
+      })
+      // 确认成功后重拉的详情：挂起已消失
+      .mockResolvedValueOnce({ task: { ...task, status: 'RUNNING' }, steps: [] })
+
+    const wrapper = await mountConsole()
+    await wrapper.get('.recent-item').trigger('click')
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(wrapper.get('.modal-stub').text()).toContain('指派工单')
+    expect(wrapper.get('.modal-stub').text()).toContain('Jerry')
+
+    await wrapper.get('.modal-ok').trigger('click')
+    await flushPromises()
+
+    expect(confirmCalls).toEqual([{ id: 'task-h1', confirmationId: 'confirm-789', approved: true }])
+    expect(getTaskApi).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('.modal-stub').exists()).toBe(false)
   })
 })

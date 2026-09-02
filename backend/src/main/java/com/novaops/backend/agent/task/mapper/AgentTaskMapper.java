@@ -26,4 +26,7 @@ public interface AgentTaskMapper {
   void insertStep(AgentTaskStepRecord record);
 
   List<AgentTaskStepRecord> listSteps(@Param("taskId") String taskId);
+
+  /** 无活跃内存会话判定的 TTL 清扫候选：超过截止时间仍处非终态的任务（单次上限 200 条）。 */
+  List<String> findStaleTaskIds(@Param("cutoff") java.time.LocalDateTime cutoff);
 }
