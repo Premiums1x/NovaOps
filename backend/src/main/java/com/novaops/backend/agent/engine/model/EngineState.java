@@ -145,7 +145,8 @@ public class EngineState {
     return confirmedSeqs.contains(step.seq());
   }
 
+  /** 确认令牌：UUID 全长去横线（32 位 hex，128 bit 熵），避免令牌可被猜测遍历。 */
   public String mintConfirmationId() {
-    return "confirm-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    return "confirm-" + UUID.randomUUID().toString().replace("-", "");
   }
 }

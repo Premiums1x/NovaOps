@@ -24,6 +24,7 @@ class McpRemoteBridgeTest {
   private McpRemoteToolBridge bridge;
   private String lastToolCallName;
   private String lastToolCallArgs;
+  private final java.util.List<String> receivedMethods = new java.util.ArrayList<>();
 
   @BeforeEach
   void setUp() throws Exception {
@@ -37,9 +38,16 @@ class McpRemoteBridgeTest {
       String request = new String(body, StandardCharsets.UTF_8);
       String response;
       if (request.contains("\"method\":\"initialize\"")) {
+        receivedMethods.add("initialize");
         response = """
             {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26",
              "serverInfo":{"name":"fake-remote","version":"1.0"}}}""".replace("\n", "");
+      } else if (request.contains("\"method\":\"notifications/initialized\"")) {
+        receivedMethods.add("notifications/initialized");
+        // 通知无 id、不要求响应体：按 MCP 语义返回 202 空响应
+        exchange.sendResponseHeaders(202, -1);
+        exchange.close();
+        return;
       } else if (request.contains("\"method\":\"tools/list\"")) {
         response = """
             {"jsonrpc":"2.0","id":2,"result":{"tools":[
@@ -88,6 +96,23 @@ class McpRemoteBridgeTest {
     assertTrue(registry.find("mcp_tavily_web_search").isPresent());
     assertTrue(registry.readableTools().stream()
         .anyMatch(descriptor -> "mcp_tavily_web_search".equals(descriptor.name())));
+    // 规范握手：initialize 之后必须先收到 notifications/initialized 再 tools/list
+    assertEquals(java.util.List.of("initialize", "notifications/initialized"), receivedMethods);
+  }
+
+  @Test
+  void sanitizesServerAndToolNamesForRegistryKey() {
+    McpRemoteProperties.Server server = enabledServer();
+    server.setName("ops.tools#1");
+
+    int registered = bridge.discoverAndRegister(server);
+
+    assertEquals(1, registered);
+    // "ops.tools#1" 的 . 与 # 各替换为下划线 → mcp_ops_tools_1_web_search
+    assertTrue(registry.find("mcp_ops_tools_1_web_search").isPresent());
+    // 注册名与模型可见清单一致（单一事实来源）
+    assertTrue(registry.readableTools().stream()
+        .noneMatch(descriptor -> descriptor.name().contains(".") || descriptor.name().contains("#")));
   }
 
   @Test

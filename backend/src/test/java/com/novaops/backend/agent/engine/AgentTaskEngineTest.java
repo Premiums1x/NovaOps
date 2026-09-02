@@ -376,6 +376,16 @@ class AgentTaskEngineTest {
   }
 
   @Test
+  void confirmationIdHasFullUuidEntropy() {
+    EngineState state = state(registry(), "确认令牌熵", Set.of());
+
+    String id = state.mintConfirmationId();
+
+    assertTrue(id.startsWith("confirm-"));
+    assertEquals(32, id.substring("confirm-".length()).length());
+  }
+
+  @Test
   void toolPoolRejectionDegradesToStepFailureAndReplans() {
     ScriptedGateway gateway = new ScriptedGateway();
     gateway.plans.add(TaskPlan.of(steps("test.echo")));

@@ -59,6 +59,7 @@ public class McpRemoteToolBridge {
   /** 供测试复用：返回成功注册的工具数。 */
   public int discoverAndRegister(McpRemoteProperties.Server server) {
     client.initialize(server.getEndpoint(), server.getToken(), server.getTimeoutSeconds());
+    client.notifyInitialized(server.getEndpoint(), server.getToken(), server.getTimeoutSeconds());
     JsonNode tools = client.listTools(server.getEndpoint(), server.getToken(), server.getTimeoutSeconds());
     List<ToolDescriptor> registered = new ArrayList<>();
     if (tools.isArray()) {
@@ -67,12 +68,10 @@ public class McpRemoteToolBridge {
         if (remoteName == null || remoteName.isBlank()) {
           return;
         }
-        String mcpName = "mcp_" + server.getName() + "_" + remoteName;
+        String mcpName = mcpToolName(server.getName(), remoteName);
         McpRemoteToolExecutor executor = new McpRemoteToolExecutor(
             McpServerConfig.of(server, client),
             remoteName,
-            mcpName,
-            "远端 MCP 工具（" + server.getName() + "）：" + tool.path("description").asText(""),
             objectMapper.convertValue(tool.path("inputSchema"), Map.class));
         ToolDescriptor descriptor = new ToolDescriptor(
             mcpName,
@@ -87,5 +86,15 @@ public class McpRemoteToolBridge {
       });
     }
     return registered.size();
+  }
+
+  /** 桥接工具名：mcp_<消毒后的 server 名>_<消毒后的远端工具名>；注册名与模型可见清单同源。 */
+  public static String mcpToolName(String serverName, String remoteToolName) {
+    return "mcp_" + sanitize(serverName) + "_" + sanitize(remoteToolName);
+  }
+
+  /** 仅保留字母数字（小写化），其余字符替换为下划线，保证工具名在提示词与 tools/list 中安全。 */
+  public static String sanitize(String value) {
+    return value.replaceAll("[^A-Za-z0-9]", "_").toLowerCase();
   }
 }
