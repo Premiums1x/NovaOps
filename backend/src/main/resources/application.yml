@@ -80,6 +80,9 @@ app:
     executor-core-size: ${NOVAOPS_AGENT_EXECUTOR_CORE_SIZE:4}
     executor-max-size: ${NOVAOPS_AGENT_EXECUTOR_MAX_SIZE:12}
     executor-queue-capacity: ${NOVAOPS_AGENT_EXECUTOR_QUEUE_CAPACITY:100}
+    tool-executor-core-size: ${NOVAOPS_AGENT_TOOL_EXECUTOR_CORE_SIZE:8}
+    tool-executor-max-size: ${NOVAOPS_AGENT_TOOL_EXECUTOR_MAX_SIZE:16}
+    tool-executor-queue-capacity: ${NOVAOPS_AGENT_TOOL_EXECUTOR_QUEUE_CAPACITY:0}
     task:
       max-steps: ${NOVAOPS_AGENT_TASK_MAX_STEPS:10}
       max-revisions: ${NOVAOPS_AGENT_TASK_MAX_REVISIONS:2}

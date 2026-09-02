@@ -16,6 +16,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.springframework.stereotype.Component;
@@ -51,7 +52,7 @@ public class AgentTaskEngine {
       ToolRegistry registry,
       TaskModelGateway gateway,
       EngineConfig config,
-      @org.springframework.beans.factory.annotation.Qualifier("agentTaskExecutor")
+      @org.springframework.beans.factory.annotation.Qualifier("agentToolExecutor")
       Executor toolRunner,
       ObjectMapper objectMapper) {
     this.registry = registry;
@@ -259,7 +260,12 @@ public class AgentTaskEngine {
       return call.call();
     }
     FutureTask<ToolResult> future = new FutureTask<>(call);
-    toolRunner.execute(future);
+    try {
+      toolRunner.execute(future);
+    } catch (RejectedExecutionException ex) {
+      // 工具池拒绝：降级为该步失败并走重规划，不放大成整个任务失败
+      return ToolResult.failed("工具执行队列已满，请稍后重试");
+    }
     try {
       return future.get(config.stepTimeout().toMillis(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException ex) {

@@ -374,4 +374,33 @@ class AgentTaskEngineTest {
     assertEquals(EngineResult.Phase.FAILED, result.phase());
     assertTrue(result.error().contains("违反安全契约"));
   }
+
+  @Test
+  void toolPoolRejectionDegradesToStepFailureAndReplans() {
+    ScriptedGateway gateway = new ScriptedGateway();
+    gateway.plans.add(TaskPlan.of(steps("test.echo")));
+    gateway.replans.add(TaskPlan.of(steps("test.echo")));
+    gateway.summaries.add("降级后完成");
+    ToolRegistry registry = registry();
+    EngineState state = state(registry, "工具池拒绝", Set.of());
+    //模拟工具池瞬时饱和：第一次提交被拒绝，之后恢复放行
+    java.util.concurrent.atomic.AtomicInteger submissions = new java.util.concurrent.atomic.AtomicInteger();
+    java.util.concurrent.Executor rejectingThenDelegatingRunner = command -> {
+      if (submissions.getAndIncrement() == 0) {
+        throw new java.util.concurrent.RejectedExecutionException("pool full");
+      }
+      command.run();
+    };
+    AgentTaskEngine engine = new AgentTaskEngine(
+        registry, gateway, config(10, 2, 2000, 1), rejectingThenDelegatingRunner, new ObjectMapper());
+
+    List<EngineEvent> events = run(engine, state);
+
+    //池拒绝只影响该步（FAILED → 重规划），任务本身继续推进直至完成
+    assertEquals(EngineResult.Phase.COMPLETED, lastPhase(events));
+    assertEquals(1, gateway.replanCalls);
+    assertEquals(StepOutcome.FAILED, state.outcomes().get(0).status());
+    assertTrue(state.outcomes().get(0).observation().contains("队列已满"));
+    assertEquals(StepOutcome.DONE, state.outcomes().get(1).status());
+  }
 }

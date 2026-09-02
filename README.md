@@ -216,6 +216,7 @@ Vite 会将 `/api` 代理到 `http://127.0.0.1:8090`。
 - 写操作两段式确认：WRITE 工具先返回效果预览（不落库），用户在前端确认后才真正执行；状态机与动作级权限由 Service 层强制。
 - 审计：任务、步骤流水与每一次工具调用（含越权拦截）均落库（`agent_task` / `agent_task_step` / `agent_audit_log`）。
 - 运行模型：引擎循环护栏（步数/重规划/观察截断/单步超时）见 `app.agent.task.*` 配置。任务会话不跨重启保留，但任务与审计记录已持久化可追溯。
+- 线程池：任务主循环与工具执行使用两个独立池（`nova-agent-*` / `nova-agent-tool-*`），避免任务线程阻塞等工具时双重占坑；工具池满载时快速拒绝并由引擎降级为单步失败重规划，配置见 `app.agent.executor-*` 与 `app.agent.tool-executor-*`。
 - MCP Server：`POST /api/mcp`（JSON-RPC 2.0，协议版本 2025-03-26）。设置 `NOVAOPS_AGENT_MCP_SERVER_TOKEN` 后启用；仅暴露只读工具，外部宿主（如 Claude Desktop、IDE Agent）以 `Authorization: Bearer <token>` 接入。
 - MCP Client（接入外部工具，如 Tavily）：
 
