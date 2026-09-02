@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { cancelTaskApi, confirmTaskApi, createTaskApi, getTaskApi, listTasksApi, streamTaskEvents } from '@/api/agentTask'
-import type { AgentTaskDto } from '@/api/agentTask'
+import {
+  cancelTaskApi,
+  confirmTaskApi,
+  createTaskApi,
+  getTaskApi,
+  getTaskStatsApi,
+  listTasksApi,
+  streamTaskEvents,
+} from '@/api/agentTask'
+import type { AgentTaskDto, AgentTaskStatsDto } from '@/api/agentTask'
+import TaskTimeline from '@/components/agent/TaskTimeline.vue'
+import type { TaskStepView } from '@/components/agent/TaskTimeline.vue'
 
 const Preview = defineAsyncComponent(() => import('@/components/markdown/MdPreviewAsync.vue'))
 
 interface PlanStepView { seq: number; tool: string; title: string; why: string }
-interface ExecutedStepView { seq: number; tool: string; title: string; status: string; observation: string }
 interface ConfirmInfo { confirmationId: string; tool: string; title: string; preview: Record<string, unknown> }
 
 const suggestions = [
@@ -20,19 +29,25 @@ const goal = ref('')
 const running = ref(false)
 const taskId = ref('')
 const planSteps = ref<PlanStepView[]>([])
-const executed = ref<ExecutedStepView[]>([])
+const executed = ref<TaskStepView[]>([])
 const confirmInfo = ref<ConfirmInfo | null>(null)
 const confirmVisible = ref(false)
 const result = ref('')
 const errorText = ref('')
 const recentTasks = ref<AgentTaskDto[]>([])
+const stats = ref<AgentTaskStatsDto | null>(null)
 const viewingHistory = ref(false)
 
 let controller: AbortController | undefined
 
 const canSubmit = computed(() => goal.value.trim().length > 0 && !running.value)
 
-const upsert = (step: ExecutedStepView) => {
+const confirmRate = computed(() => {
+  if (!stats.value || !stats.value.writeOperations) return '—'
+  return `${Math.round((stats.value.confirmedOperations / stats.value.writeOperations) * 100)}%`
+})
+
+const upsert = (step: TaskStepView) => {
   const index = executed.value.findIndex((item) => item.seq === step.seq)
   if (index >= 0) {
     executed.value.splice(index, 1, step)
@@ -96,6 +111,7 @@ const run = async () => {
   } finally {
     running.value = false
     refreshRecent()
+    refreshStats()
   }
 }
 
@@ -130,6 +146,12 @@ const refreshRecent = async () => {
   try {
     recentTasks.value = await listTasksApi()
   } catch { /* 列表失败不打断主流程 */ }
+}
+
+const refreshStats = async () => {
+  try {
+    stats.value = await getTaskStatsApi()
+  } catch { /* 统计失败不打断主流程 */ }
 }
 
 const openHistory = async (id: string) => {
@@ -175,7 +197,10 @@ const startNew = () => {
   executed.value = []
 }
 
-onMounted(refreshRecent)
+onMounted(() => {
+  refreshRecent()
+  refreshStats()
+})
 //离开页面时中断进行中的 SSE 流，避免后台任务与状态更新继续打到已卸载组件
 onBeforeUnmount(() => controller?.abort())
 </script>
@@ -214,6 +239,23 @@ onBeforeUnmount(() => controller?.abort())
 
         <a-alert v-if="errorText" type="error" show-icon :message="errorText" class="console-block" />
 
+        <a-card v-if="stats" class="console-card" :bordered="false" title="任务统计">
+          <div class="stat-cards">
+            <div class="stat-card">
+              <div class="stat-value">{{ stats.total }}</div>
+              <div class="stat-label">总任务数</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">{{ Math.round(stats.successRate * 100) }}%</div>
+              <div class="stat-label">成功率</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">{{ confirmRate }}</div>
+              <div class="stat-label">写操作确认率</div>
+            </div>
+          </div>
+        </a-card>
+
         <a-card v-if="planSteps.length" class="console-card" :bordered="false" title="执行计划">
           <a-steps direction="vertical" size="small" :current="planSteps.length">
             <a-step v-for="step in planSteps" :key="step.seq" :title="step.title" :description="step.why" />
@@ -221,25 +263,7 @@ onBeforeUnmount(() => controller?.abort())
         </a-card>
 
         <a-card v-if="executed.length" class="console-card" :bordered="false" title="执行过程">
-          <a-timeline>
-            <a-timeline-item
-              v-for="step in executed"
-              :key="`${step.seq}-${step.tool}`"
-              :color="step.status === 'DONE' ? 'green' : step.status === 'FAILED' ? 'red' : 'gray'"
-            >
-              <div class="step-line">
-                <strong>{{ step.title }}</strong>
-                <a-tag :color="step.status === 'DONE' ? 'success' : step.status === 'FAILED' ? 'error' : 'default'">
-                  {{ step.status }}
-                </a-tag>
-              </div>
-              <a-collapse v-if="step.observation" ghost size="small" class="observation">
-                <a-collapse-panel header="查看观察结果">
-                  <pre>{{ step.observation }}</pre>
-                </a-collapse-panel>
-              </a-collapse>
-            </a-timeline-item>
-          </a-timeline>
+          <TaskTimeline :steps="executed" />
         </a-card>
 
         <a-card v-if="result" class="console-card" :bordered="false" title="任务报告">
@@ -291,8 +315,10 @@ onBeforeUnmount(() => controller?.abort())
 .suggestions button:hover:not(:disabled){border-color:var(--nova-primary)}
 .suggestions button:disabled{opacity:.5;cursor:not-allowed}
 .actions{display:flex;gap:10px;margin-top:12px}
-.step-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.observation pre{max-height:200px;margin:4px 0 0;padding:8px;overflow:auto;border-radius:8px;background:var(--nova-surface);color:var(--nova-text-secondary);font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.stat-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.stat-card{padding:10px 14px;border:1px solid var(--nova-border);border-radius:10px;background:var(--nova-surface)}
+.stat-value{font-size:20px;font-weight:600;color:var(--nova-text)}
+.stat-label{margin-top:2px;font-size:12px;color:var(--nova-text-secondary)}
 .preview-json{max-height:260px;overflow:auto;border-radius:8px;background:var(--nova-surface);padding:10px;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .confirm-note{margin:10px 0 0;color:var(--nova-text-secondary);font-size:12px}
 .recent-item{cursor:pointer;gap:8px}

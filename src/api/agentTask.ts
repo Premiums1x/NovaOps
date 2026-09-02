@@ -35,6 +35,28 @@ export interface AgentTaskPendingConfirmation {
   preview?: Record<string, unknown> | null
 }
 
+export interface AgentTaskAuditDto {
+  id: string
+  taskId: string | null
+  source: string | null
+  toolName: string | null
+  argsDigest: string | null
+  resultDigest: string | null
+  writeOperation: boolean | null
+  confirmed: boolean | null
+  allowed: boolean | null
+  createdAt: string | null
+}
+
+export interface AgentTaskStatsDto {
+  total: number
+  byStatus: Record<string, number>
+  successRate: number
+  avgSteps: number
+  writeOperations: number
+  confirmedOperations: number
+}
+
 export const createTaskApi = (goal: string) => request.post<{ taskId: string }>('/agent/tasks', { goal })
 
 export const confirmTaskApi = (id: string, confirmationId: string, approved: boolean) =>
@@ -46,6 +68,11 @@ export const getTaskApi = (id: string) =>
   request.get<{ task: AgentTaskDto; steps: AgentTaskStepDto[]; pendingConfirmation?: AgentTaskPendingConfirmation | null }>(`/agent/tasks/${id}`)
 
 export const listTasksApi = () => request.get<AgentTaskDto[]>('/agent/tasks')
+
+export const getTaskAuditsApi = (id: string) =>
+  request.get<AgentTaskAuditDto[]>(`/agent/tasks/${id}/audits`)
+
+export const getTaskStatsApi = () => request.get<AgentTaskStatsDto>('/agent/tasks/stats')
 
 export const streamTaskEvents = (id: string, onEvent: AgentTaskEventHandler, signal: AbortSignal) =>
   streamSse<TaskSseEvent>(`/agent/tasks/${id}/stream`, {}, onEvent, signal)

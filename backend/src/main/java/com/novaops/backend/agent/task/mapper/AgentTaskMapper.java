@@ -29,4 +29,10 @@ public interface AgentTaskMapper {
 
   /** 无活跃内存会话判定的 TTL 清扫候选：超过截止时间仍处非终态的任务（单次上限 200 条）。 */
   List<String> findStaleTaskIds(@Param("cutoff") java.time.LocalDateTime cutoff);
+
+  /** 任务统计：按状态分组计数。 */
+  List<java.util.Map<String, Object>> countTasksByStatus(@Param("userId") String userId);
+
+  /** 任务统计：人均任务的平均工具步数（单值）。 */
+  Double avgToolStepsPerTask(@Param("userId") String userId);
 }

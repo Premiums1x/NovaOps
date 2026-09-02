@@ -224,6 +224,58 @@ public class AgentTaskService {
     return taskMapper.listTasks(session.getUserId(), 50);
   }
 
+  /** 任务中心的审计明细：先校验任务归属（沿用 detail 的 userId 过滤），再返回审计记录。 */
+  public List<AgentAuditRecord> audits(CurrentSession session, String taskId) {
+    if (taskMapper.findTask(taskId, session.getUserId()) == null) {
+      throw new BusinessException(404, "任务不存在");
+    }
+    return auditMapper.listAuditsByTask(taskId);
+  }
+
+  /** 任务统计（统计卡片）：任务总数/状态分布/平均步数/写操作与确认次数。 */
+  public Map<String, Object> stats(CurrentSession session) {
+    String userId = session.getUserId();
+    Map<String, Long> byStatus = new LinkedHashMap<>();
+    long total = 0;
+    long done = 0;
+    for (Map<String, Object> row : taskMapper.countTasksByStatus(userId)) {
+      String status = String.valueOf(valueIgnoreCase(row, "status"));
+      long cnt = ((Number) valueIgnoreCase(row, "cnt")).longValue();
+      byStatus.put(status, cnt);
+      total += cnt;
+      if ("DONE".equals(status)) {
+        done = cnt;
+      }
+    }
+    Double avgSteps = taskMapper.avgToolStepsPerTask(userId);
+    Map<String, Object> writeStats = auditMapper.writeAuditStats(userId);
+    long writeOperations = writeStats == null ? 0
+        : (long) toNumber(valueIgnoreCase(writeStats, "writeOperations"));
+    long confirmedOperations = writeStats == null ? 0
+        : (long) toNumber(valueIgnoreCase(writeStats, "confirmedOperations"));
+
+    Map<String, Object> stats = new LinkedHashMap<>();
+    stats.put("total", total);
+    stats.put("byStatus", byStatus);
+    stats.put("successRate", total == 0 ? 0.0 : Math.round(done * 100.0 / total) / 100.0);
+    stats.put("avgSteps", avgSteps == null ? 0 : Math.round(avgSteps * 10.0) / 10.0);
+    stats.put("writeOperations", writeOperations);
+    stats.put("confirmedOperations", confirmedOperations);
+    return stats;
+  }
+
+  private Object valueIgnoreCase(Map<String, Object> row, String key) {
+    return row.entrySet().stream()
+        .filter(entry -> entry.getKey() != null && entry.getKey().equalsIgnoreCase(key))
+        .findFirst()
+        .map(Map.Entry::getValue)
+        .orElse(null);
+  }
+
+  private long toNumber(Object value) {
+    return value instanceof Number number ? number.longValue() : 0;
+  }
+
   /**
    * TTL 清扫：把超过阈值仍处非终态、且内存会话已不存在的任务置为 FAILED
    * （服务重启后 RUNNING/AWAITING_CONFIRM 记录的兜底回收）。返回清扫数量。

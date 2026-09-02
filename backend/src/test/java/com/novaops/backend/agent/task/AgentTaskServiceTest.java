@@ -37,6 +37,7 @@ import com.novaops.backend.agent.engine.model.StepOutcome;
 import com.novaops.backend.agent.engine.model.TaskPlan;
 import com.novaops.backend.agent.task.mapper.AgentAuditMapper;
 import com.novaops.backend.agent.task.mapper.AgentTaskMapper;
+import com.novaops.backend.agent.task.model.AgentAuditRecord;
 import com.novaops.backend.agent.task.model.AgentTaskRecord;
 import com.novaops.backend.agent.task.model.AgentTaskStepRecord;
 import com.novaops.backend.auth.dto.MenuDataResponse;
@@ -252,5 +253,60 @@ class AgentTaskServiceTest {
     suspended.cancel(session, overflowId);
     assertDoesNotThrow(() -> suspended.create(session, "驱逐后任务"));
     assertNull(suspended.sessionIfPresent(overflowId));
+  }
+
+  // ---------- T7：审计明细接口与统计装配 ----------
+
+  @Test
+  void auditsRejectMissingOrForeignTask() {
+    when(taskMapper.findTask("task-x", "user-1")).thenReturn(null);
+
+    assertThrows(BusinessException.class, () -> service.audits(session, "task-x"));
+    verify(auditMapper, never()).listAuditsByTask(anyString());
+  }
+
+  @Test
+  void auditsReturnRecordsForOwnedTask() {
+    AgentTaskRecord record = new AgentTaskRecord();
+    record.setId("task-9");
+    record.setUserId("user-1");
+    when(taskMapper.findTask("task-9", "user-1")).thenReturn(record);
+    List<AgentAuditRecord> audits = List.of(new AgentAuditRecord());
+    when(auditMapper.listAuditsByTask("task-9")).thenReturn(audits);
+
+    assertEquals(audits, service.audits(session, "task-9"));
+  }
+
+  @Test
+  void statsAssemblesCountsFromMappers() {
+    when(taskMapper.countTasksByStatus("user-1")).thenReturn(List.of(
+        Map.of("status", "DONE", "cnt", 2L),
+        Map.of("status", "FAILED", "cnt", 1L)));
+    when(taskMapper.avgToolStepsPerTask("user-1")).thenReturn(1.5);
+    when(auditMapper.writeAuditStats("user-1"))
+        .thenReturn(Map.of("writeOperations", 3L, "confirmedOperations", 2L));
+
+    Map<String, Object> stats = service.stats(session);
+
+    assertEquals(3L, stats.get("total"));
+    assertEquals(Map.of("DONE", 2L, "FAILED", 1L), stats.get("byStatus"));
+    assertEquals(0.67, stats.get("successRate"));
+    assertEquals(1.5, stats.get("avgSteps"));
+    assertEquals(3L, stats.get("writeOperations"));
+    assertEquals(2L, stats.get("confirmedOperations"));
+  }
+
+  @Test
+  void statsHandlesEmptyHistory() {
+    when(taskMapper.countTasksByStatus("user-1")).thenReturn(List.of());
+    when(taskMapper.avgToolStepsPerTask("user-1")).thenReturn(0.0);
+    when(auditMapper.writeAuditStats("user-1")).thenReturn(Map.of("writeOperations", 0L, "confirmedOperations", 0L));
+
+    Map<String, Object> stats = service.stats(session);
+
+    assertEquals(0L, stats.get("total"));
+    assertEquals(0.0, stats.get("successRate"));
+    assertEquals(0.0, stats.get("avgSteps"));
+    assertEquals(0L, stats.get("writeOperations"));
   }
 }

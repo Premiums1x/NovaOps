@@ -3,4 +3,6 @@
 <mapper namespace="com.novaops.backend.agent.task.mapper.AgentAuditMapper">
   <insert id="insertAudit">insert into agent_audit_log(id,task_id,user_id,source,tool_name,args_digest,result_digest,write_operation,confirmed,allowed,detail,created_at) values(#{id},#{taskId},#{userId},#{source},#{toolName},#{argsDigest},#{resultDigest},#{writeOperation},#{confirmed},#{allowed},#{detail},now())</insert>
   <select id="listAudits" resultType="com.novaops.backend.agent.task.model.AgentAuditRecord">select * from agent_audit_log where user_id=#{userId} order by created_at desc limit #{limit}</select>
+  <select id="listAuditsByTask" resultType="com.novaops.backend.agent.task.model.AgentAuditRecord">select * from agent_audit_log where task_id=#{taskId} order by created_at,id</select>
+  <select id="writeAuditStats" resultType="java.util.HashMap">select count(*) as "writeOperations", coalesce(sum(case when confirmed = 1 then 1 else 0 end), 0) as "confirmedOperations" from agent_audit_log where user_id=#{userId} and write_operation = 1</select>
 </mapper>

@@ -17,6 +17,15 @@ vi.mock('@/api/agentTask', () => ({
   }),
   cancelTaskApi: vi.fn(),
   getTaskApi: vi.fn(),
+  getTaskAuditsApi: vi.fn().mockResolvedValue([]),
+  getTaskStatsApi: vi.fn().mockResolvedValue({
+    total: 4,
+    byStatus: { DONE: 2, FAILED: 1, RUNNING: 1 },
+    successRate: 0.5,
+    avgSteps: 2.5,
+    writeOperations: 3,
+    confirmedOperations: 2,
+  }),
   listTasksApi: vi.fn().mockResolvedValue([]),
   streamTaskEvents: vi.fn().mockImplementation(async (_id: string, onEvent: EventHandler) => {
     for (const [event, data] of streamScripts.shift() ?? []) {
@@ -34,12 +43,12 @@ vi.mock('md-editor-v3', () => ({
 }))
 
 const stubs = {
-  'a-card': { template: '<div><slot name="title" /><slot /></div>' },
+  'a-card': { props: ['title'], template: '<div><slot name="title" />{{ title }}<slot /></div>' },
   'a-textarea': {
     props: ['value'],
     template: '<textarea :value="value" @input="$emit(\'update:value\', $event.target.value)" />',
   },
-  'a-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' },
+  'a-button': { template: '<button @click="$emit(\'click\', $event)"><slot /></button>' },
   'a-steps': { template: '<div class="steps-stub"><slot /></div>' },
   'a-step': {
     props: ['title', 'description'],
@@ -95,6 +104,17 @@ describe('AgentConsole', () => {
     expect(wrapper.text()).toContain('找到目标工单')
     expect(wrapper.text()).toContain('任务完成报告')
     expect(wrapper.get('.md-preview-component').text()).toContain('任务完成报告')
+  })
+
+  it('renders task statistics cards on mount', async () => {
+    const wrapper = await mountConsole()
+
+    expect(wrapper.text()).toContain('总任务数')
+    expect(wrapper.text()).toContain('成功率')
+    expect(wrapper.text()).toContain('写操作确认率')
+    expect(wrapper.text()).toContain('4')
+    expect(wrapper.text()).toContain('50%')
+    expect(wrapper.text()).toContain('67%')
   })
 
   it('asks for confirmation on confirm_required and sends approval', async () => {

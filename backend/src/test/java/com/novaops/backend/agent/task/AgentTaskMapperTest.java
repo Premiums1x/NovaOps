@@ -7,8 +7,10 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.Statement;
+import com.novaops.backend.agent.task.mapper.AgentAuditMapper;
 import com.novaops.backend.agent.task.mapper.AgentTaskMapper;
 import com.novaops.backend.agent.task.model.AgentTaskRecord;
+import com.novaops.backend.agent.task.model.AgentTaskStepRecord;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
@@ -47,6 +49,7 @@ class AgentTaskMapperTest {
           </environments>
           <mappers>
             <mapper resource="mapper/AgentTaskMapper.xml" />
+            <mapper resource="mapper/AgentAuditMapper.xml" />
           </mappers>
         </configuration>
         """;
@@ -167,5 +170,102 @@ class AgentTaskMapperTest {
     record.setGoal("清扫测试");
     record.setStatus(status);
     mapper.insertTask(record);
+  }
+
+  @Test
+  void statsAggregationMatchesManualCounts() throws Exception {
+    try (SqlSession session = factory.openSession(true)) {
+      AgentTaskMapper taskMapper = session.getMapper(AgentTaskMapper.class);
+      AgentAuditMapper auditMapper = session.getMapper(AgentAuditMapper.class);
+
+      insertTask(taskMapper, "stat-done-1", "DONE");
+      insertTask(taskMapper, "stat-done-2", "DONE");
+      insertTask(taskMapper, "stat-failed", "FAILED");
+      insertTask(taskMapper, "stat-other", "RUNNING");
+      // user-2 的任务不计入 user-1 的统计
+      AgentTaskRecord other = new AgentTaskRecord();
+      other.setId("stat-other-user");
+      other.setUserId("user-2");
+      other.setGoal("别人的任务");
+      other.setStatus("DONE");
+      taskMapper.insertTask(other);
+
+      // stat-done-1 两个工具步、stat-done-2 一个工具步 → 平均 1.5
+      insertStep(taskMapper, "s1", "stat-done-1", "tool");
+      insertStep(taskMapper, "s2", "stat-done-1", "tool");
+      insertStep(taskMapper, "s3", "stat-done-2", "tool");
+      insertStep(taskMapper, "s4", "stat-done-2", "summary");
+      insertStep(taskMapper, "s5", "stat-other", "tool");
+
+      // 三条写审计，两条已确认
+      insertAudit(auditMapper, "a1", "stat-done-1", true, true);
+      insertAudit(auditMapper, "a2", "stat-done-2", true, true);
+      insertAudit(auditMapper, "a3", "stat-done-2", true, false);
+      insertAudit(auditMapper, "a4", "stat-done-2", false, null);
+
+      var byStatus = taskMapper.countTasksByStatus("user-1");
+      java.util.Map<String, Long> counts = new java.util.HashMap<>();
+      byStatus.forEach(row -> counts.put(
+          String.valueOf(row.get("status")), ((Number) row.get("cnt")).longValue()));
+      org.assertj.core.api.Assertions.assertThat(counts)
+          .containsEntry("DONE", 2L)
+          .containsEntry("FAILED", 1L)
+          .containsEntry("RUNNING", 1L)
+          .hasSize(3);
+
+      // stat-done-1 两个工具步、stat-done-2 一个、stat-other 一个 → 4 步 / 3 任务 ≈ 1.333
+      Double avgSteps = taskMapper.avgToolStepsPerTask("user-1");
+      assertEquals(1.333, avgSteps, 0.001);
+
+      java.util.Map<String, Object> writeStats = auditMapper.writeAuditStats("user-1");
+      assertEquals(3L, ((Number) writeStats.get("writeOperations")).longValue());
+      assertEquals(2L, ((Number) writeStats.get("confirmedOperations")).longValue());
+    }
+  }
+
+  @Test
+  void listAuditsByTaskReturnsOnlyThatTask() {
+    try (SqlSession session = factory.openSession(true)) {
+      AgentTaskMapper taskMapper = session.getMapper(AgentTaskMapper.class);
+      AgentAuditMapper auditMapper = session.getMapper(AgentAuditMapper.class);
+      insertTask(taskMapper, "aud-task-1", "DONE");
+      insertTask(taskMapper, "aud-task-2", "DONE");
+
+      insertAudit(auditMapper, "b1", "aud-task-1", true, true);
+      insertAudit(auditMapper, "b2", "aud-task-2", true, false);
+      insertAudit(auditMapper, "b3", "aud-task-1", false, null);
+
+      var audits = auditMapper.listAuditsByTask("aud-task-1");
+      org.assertj.core.api.Assertions.assertThat(audits)
+          .extracting(com.novaops.backend.agent.task.model.AgentAuditRecord::getId)
+          .containsExactlyInAnyOrder("b1", "b3");
+    }
+  }
+
+  private static void insertStep(
+      AgentTaskMapper mapper, String id, String taskId, String kind) {
+    AgentTaskStepRecord record = new AgentTaskStepRecord();
+    record.setId(id);
+    record.setTaskId(taskId);
+    record.setSeq(1);
+    record.setKind(kind);
+    record.setStatus("DONE");
+    record.setRevision(0);
+    mapper.insertStep(record);
+  }
+
+  private static void insertAudit(
+      AgentAuditMapper mapper, String id, String taskId, boolean write, Boolean confirmed) {
+    com.novaops.backend.agent.task.model.AgentAuditRecord record =
+        new com.novaops.backend.agent.task.model.AgentAuditRecord();
+    record.setId(id);
+    record.setTaskId(taskId);
+    record.setUserId("user-1");
+    record.setSource("task");
+    record.setToolName("ticket.assign");
+    record.setWriteOperation(write);
+    record.setConfirmed(confirmed);
+    record.setAllowed(true);
+    mapper.insertAudit(record);
   }
 }

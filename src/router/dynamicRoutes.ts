@@ -14,6 +14,7 @@ const routeComponentMap: Record<string, RouteComponentLoader> = {
   AssetListView: () => import('@/views/asset/list.vue'),
   KbListView: () => import('@/views/kb/list.vue'),
   AgentConsoleView: () => import('@/views/agent/console.vue'),
+  AgentTasksView: () => import('@/views/agent/tasks.vue'),
   UserManagementView: () => import('@/views/system/users.vue'),
 }
 
