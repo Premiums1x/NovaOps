@@ -3,7 +3,7 @@
 <mapper namespace="com.novaops.backend.agent.task.mapper.AgentTaskMapper">
   <insert id="insertTask">insert into agent_task(id,user_id,goal,status,created_at,updated_at) values(#{id},#{userId},#{goal},#{status},now(),now())</insert>
   <update id="updateTaskStatus">update agent_task set status=#{status},updated_at=now() where id=#{id}</update>
-  <update id="finishTask">update agent_task set status=#{status},result_text=#{resultText},error_text=#{errorText},updated_at=now() where id=#{id}</update>
+  <update id="finishTask">update agent_task set status=#{status},result_text=#{resultText},error_text=#{errorText},updated_at=now() where id=#{id} and status not in ('DONE','FAILED','CANCELLED')</update>
   <update id="updatePlanJson">update agent_task set plan_json=#{planJson},updated_at=now() where id=#{id}</update>
   <select id="findTask" resultType="com.novaops.backend.agent.task.model.AgentTaskRecord">select * from agent_task where id=#{id} and user_id=#{userId} limit 1</select>
   <select id="listTasks" resultType="com.novaops.backend.agent.task.model.AgentTaskRecord">select * from agent_task where user_id=#{userId} order by created_at desc limit #{limit}</select>

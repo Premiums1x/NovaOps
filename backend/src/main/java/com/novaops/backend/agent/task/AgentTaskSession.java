@@ -58,6 +58,11 @@ public class AgentTaskSession {
     }
   }
 
+  /** 仅供同包测试读取已广播的事件序列。 */
+  synchronized List<EngineEvent> historySnapshot() {
+    return List.copyOf(history);
+  }
+
   /** 新连接：回放全部历史事件；任务已终态则发送后立即完成。 */
   public synchronized SseEmitter attach() {
     SseEmitter emitter = new SseEmitter(0L);

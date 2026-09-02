@@ -92,13 +92,24 @@ public class AgentTaskService {
   private void submit(CurrentSession owner, EngineState state, AgentTaskSession agentSession) {
     try {
       agentSession.future(java.util.concurrent.CompletableFuture.runAsync(() -> {
-        engine.run(state, event -> {
-          if ("result".equals(event.type()) || "error".equals(event.type())) {
-            agentSession.markTerminal();
-          }
-          persist(owner, state.taskId(), event);
-          agentSession.record(event);
-        });
+        try {
+          engine.run(state, event -> {
+            if ("result".equals(event.type()) || "error".equals(event.type())) {
+              agentSession.markTerminal();
+            }
+            persist(owner, state.taskId(), event);
+            agentSession.record(event);
+          });
+        } catch (Exception ex) {
+          // 引擎 try/catch 之外逃逸的异常兜底：标记终态并落 FAILED，
+          // 终态写入幂等（finishTask 带 status 守卫），不会覆盖已写入的取消/完成态
+          log.error("agent task execution failed unexpectedly: taskId={}", state.taskId(), ex);
+          agentSession.markTerminal();
+          EngineEvent errorEvent = EngineEvent.of(
+              "error", state.nextGlobalSeq(), Map.of("message", "任务执行异常，请重新发起"));
+          persist(owner, state.taskId(), errorEvent);
+          agentSession.record(errorEvent);
+        }
       }, taskExecutor));
     } catch (RejectedExecutionException ex) {
       agentSession.markTerminal();
@@ -171,6 +182,11 @@ public class AgentTaskService {
       throw new BusinessException(403, "无权访问该任务");
     }
     return agentSession;
+  }
+
+  /** 仅供同包测试与清理任务读取内存会话。 */
+  AgentTaskSession sessionIfPresent(String taskId) {
+    return sessions.get(taskId);
   }
 
   /** 事件持久化：步骤/审计落库，终态回写任务表（广播由会话处理）。 */
