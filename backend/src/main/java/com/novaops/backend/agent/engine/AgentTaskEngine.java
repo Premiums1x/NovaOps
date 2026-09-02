@@ -9,6 +9,7 @@ import com.novaops.backend.agent.engine.model.EngineState;
 import com.novaops.backend.agent.engine.model.PlannedStep;
 import com.novaops.backend.agent.engine.model.StepOutcome;
 import com.novaops.backend.agent.engine.model.TaskPlan;
+import com.novaops.backend.common.util.StringUtils;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -330,7 +331,8 @@ public class AgentTaskEngine {
     if (text == null || text.length() <= config.observationMaxChars()) {
       return text == null ? "" : text;
     }
-    return text.substring(0, config.observationMaxChars()) + TRUNCATION_SUFFIX;
+    // 按码点截断，避免 emoji 等代理对被切成乱码
+    return StringUtils.truncateByCodePoints(text, config.observationMaxChars()) + TRUNCATION_SUFFIX;
   }
 
   private void emit(EngineListener listener, String type, int seq, Map<String, Object> payload) {
