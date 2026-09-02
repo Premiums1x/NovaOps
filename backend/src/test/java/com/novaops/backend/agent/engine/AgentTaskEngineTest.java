@@ -386,6 +386,21 @@ class AgentTaskEngineTest {
   }
 
   @Test
+  void engineEventsCarryTimestamps() {
+    ScriptedGateway gateway = new ScriptedGateway();
+    gateway.plans.add(TaskPlan.of(steps("test.echo")));
+    gateway.summaries.add("完成");
+    ToolRegistry registry = registry();
+    EngineState state = state(registry, "时间戳", Set.of());
+    AgentTaskEngine engine = new AgentTaskEngine(
+        registry, gateway, config(10, 2, 2000, 1), Runnable::run, new ObjectMapper());
+
+    List<EngineEvent> events = run(engine, state);
+
+    assertTrue(events.stream().allMatch(event -> event.at() > 0), "所有事件都应携带 at 时间戳");
+  }
+
+  @Test
   void toolPoolRejectionDegradesToStepFailureAndReplans() {
     ScriptedGateway gateway = new ScriptedGateway();
     gateway.plans.add(TaskPlan.of(steps("test.echo")));

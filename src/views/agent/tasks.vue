@@ -11,6 +11,7 @@ import {
 import type { AgentTaskAuditDto, AgentTaskDto, AgentTaskStepDto } from '@/api/agentTask'
 import type { TaskStepView } from '@/components/agent/TaskTimeline.vue'
 import TaskTimeline from '@/components/agent/TaskTimeline.vue'
+import { parseStepObservation, stepSpanText } from '@/utils/taskStep'
 
 const Preview = defineAsyncComponent(() => import('@/components/markdown/MdPreviewAsync.vue'))
 
@@ -25,8 +26,15 @@ const audits = ref<AgentTaskAuditDto[]>([])
 const result = ref('')
 const errorText = ref('')
 const rerunning = ref(false)
+const planAt = ref<number | undefined>()
+const resultAt = ref<number | undefined>()
 
 let controller: AbortController | undefined
+
+//任务总耗时：实时流用 plan→result 事件差；历史回放退化为首尾步骤差
+const totalDuration = computed(() =>
+  stepSpanText(executed.value.map((step) => step.at), planAt.value, resultAt.value),
+)
 
 const filteredTasks = computed(() =>
   statusFilter.value === 'ALL'
@@ -40,13 +48,17 @@ const statusTag = (status: string) =>
 const formatTime = (value: string | null) =>
   value ? value.replace('T', ' ').slice(0, 19) : '—'
 
-const toStepView = (step: AgentTaskStepDto, index: number): TaskStepView => ({
-  seq: step.seq ?? index + 1,
-  tool: step.toolName || '',
-  title: step.toolName || step.kind,
-  status: step.status,
-  observation: step.observationJson || '',
-})
+const toStepView = (step: AgentTaskStepDto, index: number): TaskStepView => {
+  const parsed = parseStepObservation(step.observationJson)
+  return {
+    seq: step.seq ?? index + 1,
+    tool: step.toolName || '',
+    title: step.toolName || step.kind,
+    status: step.status,
+    observation: parsed.observation,
+    at: parsed.at,
+  }
+}
 
 const loadTasks = async () => {
   try {
@@ -79,7 +91,9 @@ const selectTask = async (id: string) => {
 }
 
 const onStreamEvent = (event: string, data: Record<string, unknown>) => {
+  const at = typeof data.at === 'number' ? data.at : undefined
   if (event === 'plan') {
+    planAt.value = at
     const steps = Array.isArray(data.steps) ? data.steps as Array<Record<string, unknown>> : []
     executed.value = steps.map((step, index) => ({
       seq: Number(step.seq || index + 1),
@@ -96,6 +110,7 @@ const onStreamEvent = (event: string, data: Record<string, unknown>) => {
       title: String(data.title || data.tool || ''),
       status: String(data.status || ''),
       observation: String(data.observation || ''),
+      at,
     }
     const index = executed.value.findIndex((item) => item.seq === step.seq)
     if (index >= 0) {
@@ -104,7 +119,10 @@ const onStreamEvent = (event: string, data: Record<string, unknown>) => {
       executed.value.push(step)
     }
   }
-  if (event === 'result') result.value = String(data.summary || '')
+  if (event === 'result') {
+    result.value = String(data.summary || '')
+    resultAt.value = at
+  }
   if (event === 'error') errorText.value = String(data.message || '任务失败')
   if (event === 'confirm_required') {
     // 重跑如果撞上写操作确认：工作台才有确认上下文，这里提示后停止流
@@ -187,6 +205,7 @@ onBeforeUnmount(() => controller?.abort())
             <TaskTimeline :steps="executed" />
           </a-card>
           <a-card v-if="result" class="tasks-card" :bordered="false" title="任务报告">
+            <div v-if="totalDuration" class="report-meta">总耗时 {{ totalDuration }}</div>
             <Preview editor-id="agent-tasks-result" :model-value="result" />
           </a-card>
           <a-card v-if="audits.length" class="tasks-card" :bordered="false" title="审计明细">
@@ -217,6 +236,7 @@ onBeforeUnmount(() => controller?.abort())
 .tasks-card{border:1px solid var(--nova-border);border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,.04)}
 .tasks-block{border-radius:10px}
 .tasks-side,.tasks-main{display:grid;gap:14px;min-width:0}
+.report-meta{margin-bottom:8px;font-size:12px;color:var(--nova-text-secondary)}
 .filter-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
 .filter-chips button{padding:4px 10px;border:1px solid var(--nova-border);border-radius:999px;background:var(--nova-surface-elevated);color:var(--nova-text);font-size:12px;cursor:pointer}
 .filter-chips button.active{border-color:var(--nova-primary);color:var(--nova-primary)}

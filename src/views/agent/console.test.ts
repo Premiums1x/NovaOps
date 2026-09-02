@@ -86,11 +86,12 @@ describe('AgentConsole', () => {
     vi.clearAllMocks()
   })
 
-  it('runs a task and renders plan, steps and result', async () => {
+  it('runs a task and renders plan, steps, durations and result', async () => {
     streamScripts.push([
-      ['plan', { steps: [{ seq: 1, tool: 'ticket.search', title: '检索工单', why: '找到目标工单' }] }],
-      ['step', { seq: 1, tool: 'ticket.search', title: '检索工单', status: 'DONE', observation: '{"total":1}' }],
-      ['result', { summary: '任务完成报告' }],
+      ['plan', { steps: [{ seq: 1, tool: 'ticket.search', title: '检索工单', why: '找到目标工单' }], at: 500 }],
+      ['step', { seq: 1, tool: 'ticket.search', title: '检索工单', status: 'DONE', observation: '{"total":1}', at: 1000 }],
+      ['step', { seq: 2, tool: 'kb.search', title: '检索知识库', status: 'DONE', observation: '{"hits":2}', at: 2500 }],
+      ['result', { summary: '任务完成报告', at: 3000 }],
     ])
     const wrapper = await mountConsole()
 
@@ -104,6 +105,9 @@ describe('AgentConsole', () => {
     expect(wrapper.text()).toContain('找到目标工单')
     expect(wrapper.text()).toContain('任务完成报告')
     expect(wrapper.get('.md-preview-component').text()).toContain('任务完成报告')
+    // 每步相对耗时（相邻事件 at 差）与报告卡总耗时（plan→result）
+    expect(wrapper.text()).toContain('1.5s')
+    expect(wrapper.text()).toContain('总耗时 2.5s')
   })
 
   it('renders task statistics cards on mount', async () => {

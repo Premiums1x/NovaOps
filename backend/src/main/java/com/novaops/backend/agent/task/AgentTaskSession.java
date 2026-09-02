@@ -79,7 +79,10 @@ public class AgentTaskSession {
 
   private void send(SseEmitter emitter, EngineEvent event) {
     try {
-      emitter.send(SseEmitter.event().name(event.type()).data(event.payload()));
+      // 引擎时间戳并入 SSE 载荷，前端据此计算每步相对耗时
+      java.util.Map<String, Object> data = new java.util.LinkedHashMap<>(event.payload());
+      data.put("at", event.at());
+      emitter.send(SseEmitter.event().name(event.type()).data(data));
       if (terminal && isTerminalEvent(event)) {
         emitter.complete();
       }

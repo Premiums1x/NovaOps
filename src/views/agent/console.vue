@@ -13,6 +13,7 @@ import {
 import type { AgentTaskDto, AgentTaskStatsDto } from '@/api/agentTask'
 import TaskTimeline from '@/components/agent/TaskTimeline.vue'
 import type { TaskStepView } from '@/components/agent/TaskTimeline.vue'
+import { parseStepObservation, stepSpanText } from '@/utils/taskStep'
 
 const Preview = defineAsyncComponent(() => import('@/components/markdown/MdPreviewAsync.vue'))
 
@@ -44,8 +45,15 @@ const canSubmit = computed(() => goal.value.trim().length > 0 && !running.value)
 
 const confirmRate = computed(() => {
   if (!stats.value || !stats.value.writeOperations) return '—'
-  return `${Math.round((stats.value.confirmedOperations / stats.value.writeOperations) * 100)}%`
+  return `${Math.round((stats.value.confirmedOperations / stats.value.writeOperations) * 100) }%`
 })
+
+//任务总耗时：实时流用 plan→result 事件差；历史回放退化为首尾步骤差
+const planAt = ref<number | undefined>()
+const resultAt = ref<number | undefined>()
+const totalDuration = computed(() =>
+  stepSpanText(executed.value.map((step) => step.at), planAt.value, resultAt.value),
+)
 
 const upsert = (step: TaskStepView) => {
   const index = executed.value.findIndex((item) => item.seq === step.seq)
@@ -57,7 +65,9 @@ const upsert = (step: TaskStepView) => {
 }
 
 const handleEvent = (event: string, data: Record<string, unknown>) => {
+  const at = typeof data.at === 'number' ? data.at : undefined
   if (event === 'plan') {
+    planAt.value = at
     const steps = Array.isArray(data.steps) ? data.steps as Array<Record<string, unknown>> : []
     planSteps.value = steps.map((step, index) => ({
       seq: Number(step.seq || index + 1),
@@ -73,6 +83,7 @@ const handleEvent = (event: string, data: Record<string, unknown>) => {
       title: String(data.title || data.tool || ''),
       status: String(data.status || ''),
       observation: String(data.observation || ''),
+      at,
     })
   }
   if (event === 'confirm_required') {
@@ -84,7 +95,10 @@ const handleEvent = (event: string, data: Record<string, unknown>) => {
     }
     confirmVisible.value = true
   }
-  if (event === 'result') result.value = String(data.summary || '')
+  if (event === 'result') {
+    result.value = String(data.summary || '')
+    resultAt.value = at
+  }
   if (event === 'error') errorText.value = String(data.message || '任务失败')
 }
 
@@ -98,6 +112,8 @@ const run = async () => {
   planSteps.value = []
   executed.value = []
   confirmInfo.value = null
+  planAt.value = undefined
+  resultAt.value = undefined
   controller = new AbortController()
   try {
     const { taskId: id } = await createTaskApi(question)
@@ -165,13 +181,17 @@ const openHistory = async (id: string) => {
     planSteps.value = []
     executed.value = detail.steps
       .filter((step) => step.kind === 'tool' || step.kind === 'summary')
-      .map((step, index) => ({
-        seq: index + 1,
-        tool: step.toolName || '',
-        title: step.toolName || step.kind,
-        status: step.status,
-        observation: step.observationJson || '',
-      }))
+      .map((step, index) => {
+        const parsed = parseStepObservation(step.observationJson)
+        return {
+          seq: step.seq ?? index + 1,
+          tool: step.toolName || '',
+          title: step.toolName || step.kind,
+          status: step.status,
+          observation: parsed.observation,
+          at: parsed.at,
+        }
+      })
     confirmInfo.value = null
     // 挂起确认的确认令牌只在内存会话里：刷新后从 detail 恢复确认弹窗
     const pending = detail.pendingConfirmation
@@ -267,6 +287,7 @@ onBeforeUnmount(() => controller?.abort())
         </a-card>
 
         <a-card v-if="result" class="console-card" :bordered="false" title="任务报告">
+          <div v-if="totalDuration" class="report-meta">总耗时 {{ totalDuration }}</div>
           <Preview editor-id="agent-task-result" :model-value="result" />
         </a-card>
       </div>
@@ -319,6 +340,7 @@ onBeforeUnmount(() => controller?.abort())
 .stat-card{padding:10px 14px;border:1px solid var(--nova-border);border-radius:10px;background:var(--nova-surface)}
 .stat-value{font-size:20px;font-weight:600;color:var(--nova-text)}
 .stat-label{margin-top:2px;font-size:12px;color:var(--nova-text-secondary)}
+.report-meta{margin-bottom:8px;font-size:12px;color:var(--nova-text-secondary)}
 .preview-json{max-height:260px;overflow:auto;border-radius:8px;background:var(--nova-surface);padding:10px;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .confirm-note{margin:10px 0 0;color:var(--nova-text-secondary);font-size:12px}
 .recent-item{cursor:pointer;gap:8px}

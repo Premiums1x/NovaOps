@@ -51,6 +51,7 @@ import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -177,6 +178,38 @@ class AgentTaskServiceTest {
     }
   }
 
+  @AgentTool(name = "test.echo", title = "回显", description = "返回输入值")
+  static class EchoTool implements AgentToolExecutor {
+    @Override
+    public ToolResult execute(ToolContext ctx, Map<String, Object> args, boolean confirmed) {
+      return ToolResult.ok(Map.of("echo", String.valueOf(args.get("value"))));
+    }
+
+    @Override
+    public ToolSchema inputSchema() {
+      return ToolSchema.object();
+    }
+  }
+
+  /** 单步回显计划：任务直接跑完到总结。 */
+  static class EchoPlanGateway implements TaskModelGateway {
+    @Override
+    public TaskPlan plan(String goal, List<ToolDescriptor> tools) {
+      return TaskPlan.of(List.of(
+          new PlannedStep(1, "test.echo", Map.of("value", "v1"), "回显一步")));
+    }
+
+    @Override
+    public TaskPlan replan(String goal, List<ToolDescriptor> tools, List<StepOutcome> history) {
+      return TaskPlan.of(List.of());
+    }
+
+    @Override
+    public String summarize(String goal, List<StepOutcome> history) {
+      return "完成";
+    }
+  }
+
   /** 真实引擎 + 挂起写工具的服务：任务创建后停在等待确认状态。 */
   private AgentTaskService pausedService() {
     ToolRegistry registry = new ToolRegistry(List.of(new PausingWriteTool()));
@@ -256,6 +289,30 @@ class AgentTaskServiceTest {
   }
 
   // ---------- T7：审计明细接口与统计装配 ----------
+
+  @Test
+  void stepRecordsCarryEventTimestamps() throws Exception {
+    // 真实引擎 + 回显工具：任务一次跑完（工具步 + 总结步）
+    ToolRegistry registry = new ToolRegistry(List.of(new EchoTool()));
+    AgentTaskEngine realEngine = new AgentTaskEngine(
+        registry, new EchoPlanGateway(), new EngineConfig(10, 2, 2000, 20, 1),
+        Runnable::run, new ObjectMapper());
+    AgentTaskService service2 = new AgentTaskService(
+        realEngine, registry, authService, taskMapper, auditMapper,
+        new ObjectMapper(), Runnable::run);
+
+    service2.create(session, "带时间戳任务");
+
+    ArgumentCaptor<AgentTaskStepRecord> captor = ArgumentCaptor.forClass(AgentTaskStepRecord.class);
+    verify(taskMapper, times(2)).insertStep(captor.capture());
+    for (AgentTaskStepRecord step : captor.getAllValues()) {
+      com.fasterxml.jackson.databind.JsonNode observation =
+          new ObjectMapper().readTree(step.getObservationJson());
+      assertTrue(observation.hasNonNull("at") && observation.get("at").asLong() > 0,
+          "observationJson 应包含事件时间戳: " + step.getObservationJson());
+      assertTrue(observation.has("observation"));
+    }
+  }
 
   @Test
   void auditsRejectMissingOrForeignTask() {

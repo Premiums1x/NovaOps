@@ -44,7 +44,7 @@ describe('streamSse', () => {
   it('dispatches plan and step SSE frames', async () => {
     const stream = [
       'event: plan\ndata: {"steps":[{"action":"search_kb","status":"pending"}]}\n\n',
-      'event: step\ndata: {"action":"search_kb","status":"running"}\n\n',
+      'event: step\ndata: {"action":"search_kb","status":"running","at":1725300000000}\n\n',
     ].join('')
     vi.stubGlobal(
       'fetch',
@@ -62,6 +62,7 @@ describe('streamSse', () => {
     expect(onEvent).toHaveBeenNthCalledWith(2, 'step', {
       action: 'search_kb',
       status: 'running',
+      at: 1725300000000,
     })
   })
 

@@ -346,10 +346,16 @@ public class AgentTaskService {
     record.setKind(kind);
     record.setToolName((String) event.payload().get("tool"));
     record.setArgsJson(toJson(event.payload().get("args")));
-    record.setObservationJson(toJson(
-        event.payload().get("observation") == null
-            ? event.payload().get("preview")
-            : event.payload().get("observation")));
+    Object observation = event.payload().get("observation") == null
+        ? event.payload().get("preview")
+        : event.payload().get("observation");
+    // 工具/总结步骤把事件时间戳包进 observationJson（{"at":..,"observation":..}），不改表结构；
+    // confirm 步骤保持裸 preview（挂起恢复弹窗依赖该格式）
+    if ("confirm".equals(kind)) {
+      record.setObservationJson(toJson(observation));
+    } else {
+      record.setObservationJson(toJson(Map.of("at", event.at(), "observation", observation == null ? Map.of() : observation)));
+    }
     record.setStatus(kind.equals("confirm") ? "AWAITING_CONFIRM" : status);
     record.setRevision(0);
     return record;
