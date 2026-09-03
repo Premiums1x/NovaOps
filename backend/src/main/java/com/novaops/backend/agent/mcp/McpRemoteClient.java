@@ -38,9 +38,34 @@ public class McpRemoteClient {
     return objectMapper.convertValue(result, Map.class);
   }
 
-  @SuppressWarnings("unused")
+  /**
+   * 发送 initialized 通知（JSON-RPC 通知：无 id）。MCP 规范要求 initialize
+   * 成功后先发本通知再 tools/list；通知不要求响应体（202/空 body 均视为成功）。
+   */
   public void notifyInitialized(String endpoint, String token, int timeoutSeconds) {
-    rpc(endpoint, token, timeoutSeconds, "notifications/initialized", null);
+    try {
+      Map<String, Object> notification = new LinkedHashMap<>();
+      notification.put("jsonrpc", "2.0");
+      notification.put("method", "notifications/initialized");
+      HttpRequest.Builder builder = HttpRequest.newBuilder()
+          .uri(URI.create(endpoint))
+          .timeout(Duration.ofSeconds(Math.max(1, timeoutSeconds)))
+          .header("Content-Type", "application/json")
+          .header("Accept", "application/json")
+          .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(notification)));
+      if (token != null && !token.isBlank()) {
+        builder.header("Authorization", "Bearer " + token);
+      }
+      HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() < 200 || response.statusCode() >= 300) {
+        throw new IllegalStateException("远端 MCP 返回 HTTP " + response.statusCode());
+      }
+    } catch (java.io.IOException ex) {
+      throw new IllegalStateException("远端 MCP 调用失败：" + ex.getMessage(), ex);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("远端 MCP 调用被中断", ex);
+    }
   }
 
   /** 返回远端工具清单：[{name, description, inputSchema}]。 */

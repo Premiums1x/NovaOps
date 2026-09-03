@@ -12,29 +12,20 @@ import java.util.Map;
 /**
  * 远端 MCP 工具的本地执行器：把一次 execute 调用转成远端 tools/call。
  * 远端工具一律按 READ 类别接入（v1 不对远端开放写确认协议）。
- * 通过 {@link com.novaops.backend.agent.engine.ToolRegistry#register(
- * com.novaops.backend.agent.engine.ToolDescriptor, AgentToolExecutor)} 动态注册。
+ * 注册名由 {@link McpRemoteToolBridge#mcpToolName(String, String)} 统一生成，
+ * 本类不自报工具名（消除注册名与自报名的双轨）。
  */
 public class McpRemoteToolExecutor implements AgentToolExecutor {
 
-  private final ToolDescriptorHolder descriptor;
-  private final String remoteToolName;
   private final McpServerConfig config;
+  private final String remoteToolName;
+  private final Map<String, Object> inputSchema;
 
   public McpRemoteToolExecutor(
-      McpServerConfig config, String remoteToolName, String title,
-      String description, Map<String, Object> inputSchema) {
-    this.descriptor = new ToolDescriptorHolder(
-        "mcp_" + sanitize(config.name()) + "_" + sanitize(remoteToolName),
-        title,
-        description,
-        inputSchema);
-    this.remoteToolName = remoteToolName;
+      McpServerConfig config, String remoteToolName, Map<String, Object> inputSchema) {
     this.config = config;
-  }
-
-  private static String sanitize(String value) {
-    return value.replaceAll("[^A-Za-z0-9]", "_").toLowerCase();
+    this.remoteToolName = remoteToolName;
+    this.inputSchema = inputSchema == null ? Map.of() : inputSchema;
   }
 
   @Override
@@ -53,7 +44,7 @@ public class McpRemoteToolExecutor implements AgentToolExecutor {
 
   @Override
   public ToolSchema inputSchema() {
-    return ToolSchema.fromMap(descriptor.inputSchema());
+    return ToolSchema.fromMap(inputSchema);
   }
 
   private static String textOf(JsonNode result) {
@@ -64,8 +55,5 @@ public class McpRemoteToolExecutor implements AgentToolExecutor {
       }
     });
     return String.join("\n", texts);
-  }
-
-  record ToolDescriptorHolder(String name, String title, String description, Map<String, Object> inputSchema) {
   }
 }

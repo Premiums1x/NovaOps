@@ -23,6 +23,26 @@ public class AgentAsyncConfig {
     return executor;
   }
 
+  /**
+   * 工具执行线程池：与任务主循环池隔离，避免任务线程阻塞等工具时双重占坑压低并发上限。
+   * 工具调用是短任务，队列默认 0（SynchronousQueue）——满载时快速拒绝并由引擎降级为单步失败，
+   * 而不是排队后集体超时。
+   */
+  @Bean(name = "agentToolExecutor")
+  public ThreadPoolTaskExecutor agentToolExecutor(
+      @Value("${app.agent.tool-executor-core-size:8}") int coreSize,
+      @Value("${app.agent.tool-executor-max-size:16}") int maxSize,
+      @Value("${app.agent.tool-executor-queue-capacity:0}") int queueCapacity) {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(Math.max(1, coreSize));
+    executor.setMaxPoolSize(Math.max(coreSize, maxSize));
+    executor.setQueueCapacity(Math.max(0, queueCapacity));
+    executor.setThreadNamePrefix("nova-agent-tool-");
+    executor.setWaitForTasksToCompleteOnShutdown(false);
+    executor.initialize();
+    return executor;
+  }
+
   @Bean
   public EngineConfig agentEngineConfig(
       @Value("${app.agent.task.max-steps:10}") int maxSteps,

@@ -63,6 +63,18 @@ public class AgentTaskController {
     return ApiResponse.success(taskService.detail(RequestContext.getRequired(), id));
   }
 
+  @GetMapping("/{id}/audits")
+  @RequirePermission("agent:task")
+  public ApiResponse<Object> audits(@PathVariable("id") String id) {
+    return ApiResponse.success(taskService.audits(RequestContext.getRequired(), id));
+  }
+
+  @GetMapping("/stats")
+  @RequirePermission("agent:task")
+  public ApiResponse<Map<String, Object>> stats() {
+    return ApiResponse.success(taskService.stats(RequestContext.getRequired()));
+  }
+
   @GetMapping
   @RequirePermission("agent:task")
   public ApiResponse<Object> list() {

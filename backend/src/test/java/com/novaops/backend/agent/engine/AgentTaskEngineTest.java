@@ -374,4 +374,79 @@ class AgentTaskEngineTest {
     assertEquals(EngineResult.Phase.FAILED, result.phase());
     assertTrue(result.error().contains("违反安全契约"));
   }
+
+  @Test
+  void confirmationIdHasFullUuidEntropy() {
+    EngineState state = state(registry(), "确认令牌熵", Set.of());
+
+    String id = state.mintConfirmationId();
+
+    assertTrue(id.startsWith("confirm-"));
+    assertEquals(32, id.substring("confirm-".length()).length());
+  }
+
+  @Test
+  void stepEventsCarryPlanRevisionAndIncrementAfterReplan() {
+    ScriptedGateway gateway = new ScriptedGateway();
+    gateway.plans.add(TaskPlan.of(steps("missing.tool", "test.echo")));
+    gateway.replans.add(TaskPlan.of(steps("test.echo")));
+    ToolRegistry registry = registry();
+    EngineState state = state(registry, "重规划版本", Set.of());
+    AgentTaskEngine engine = new AgentTaskEngine(
+        registry, gateway, config(10, 2, 2000, 1), Runnable::run, new ObjectMapper());
+
+    List<EngineEvent> events = run(engine, state);
+
+    List<Integer> revisions = events.stream()
+        .filter(event -> "step".equals(event.type()))
+        .map(event -> (Integer) event.payload().get("revision"))
+        .toList();
+    // 初始计划的步骤 revision=0，重规划后的新步骤 revision=1
+    assertEquals(List.of(0, 1), revisions);
+    assertEquals(1, gateway.replanCalls);
+  }
+
+  @Test
+  void engineEventsCarryTimestamps() {
+    ScriptedGateway gateway = new ScriptedGateway();
+    gateway.plans.add(TaskPlan.of(steps("test.echo")));
+    gateway.summaries.add("完成");
+    ToolRegistry registry = registry();
+    EngineState state = state(registry, "时间戳", Set.of());
+    AgentTaskEngine engine = new AgentTaskEngine(
+        registry, gateway, config(10, 2, 2000, 1), Runnable::run, new ObjectMapper());
+
+    List<EngineEvent> events = run(engine, state);
+
+    assertTrue(events.stream().allMatch(event -> event.at() > 0), "所有事件都应携带 at 时间戳");
+  }
+
+  @Test
+  void toolPoolRejectionDegradesToStepFailureAndReplans() {
+    ScriptedGateway gateway = new ScriptedGateway();
+    gateway.plans.add(TaskPlan.of(steps("test.echo")));
+    gateway.replans.add(TaskPlan.of(steps("test.echo")));
+    gateway.summaries.add("降级后完成");
+    ToolRegistry registry = registry();
+    EngineState state = state(registry, "工具池拒绝", Set.of());
+    //模拟工具池瞬时饱和：第一次提交被拒绝，之后恢复放行
+    java.util.concurrent.atomic.AtomicInteger submissions = new java.util.concurrent.atomic.AtomicInteger();
+    java.util.concurrent.Executor rejectingThenDelegatingRunner = command -> {
+      if (submissions.getAndIncrement() == 0) {
+        throw new java.util.concurrent.RejectedExecutionException("pool full");
+      }
+      command.run();
+    };
+    AgentTaskEngine engine = new AgentTaskEngine(
+        registry, gateway, config(10, 2, 2000, 1), rejectingThenDelegatingRunner, new ObjectMapper());
+
+    List<EngineEvent> events = run(engine, state);
+
+    //池拒绝只影响该步（FAILED → 重规划），任务本身继续推进直至完成
+    assertEquals(EngineResult.Phase.COMPLETED, lastPhase(events));
+    assertEquals(1, gateway.replanCalls);
+    assertEquals(StepOutcome.FAILED, state.outcomes().get(0).status());
+    assertTrue(state.outcomes().get(0).observation().contains("队列已满"));
+    assertEquals(StepOutcome.DONE, state.outcomes().get(1).status());
+  }
 }

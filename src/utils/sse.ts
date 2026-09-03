@@ -1,9 +1,10 @@
 import { getAccessToken } from '@/utils/request/token'
-import type { AgentSseEvent } from '@/types/agent'
+import type { AgentSseEvent, ChatSseEvent, TaskSseEvent } from '@/types/agent'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
-const KNOWN_EVENTS: AgentSseEvent[] = [
+//两条链路的已知事件全集：聊天（RAG/CHAT）与任务工作台各一份，供未知事件告警时参考
+const CHAT_EVENTS: ChatSseEvent[] = [
   'route',
   'plan',
   'step',
@@ -14,6 +15,8 @@ const KNOWN_EVENTS: AgentSseEvent[] = [
   'done',
   'error',
 ]
+const TASK_EVENTS: TaskSseEvent[] = ['plan', 'step', 'audit', 'confirm_required', 'result', 'error']
+const KNOWN_EVENTS: readonly string[] = [...CHAT_EVENTS, ...TASK_EVENTS]
 
 const parseFrame = (frame: string) => {
   let event = 'message'
@@ -26,10 +29,10 @@ const parseFrame = (frame: string) => {
   return { event, data: dataLines.join('\n') }
 }
 
-export const streamSse = async (
+export const streamSse = async <E extends AgentSseEvent = AgentSseEvent>(
   path: string,
   body: unknown,
-  onEvent: (event: AgentSseEvent, data: Record<string, unknown>) => void,
+  onEvent: (event: E, data: Record<string, unknown>) => void,
   signal: AbortSignal,
   retry = true,
 ): Promise<void> => {
@@ -78,7 +81,7 @@ export const streamSse = async (
         const frame = buffer.slice(0, boundary)
         buffer = buffer.slice(boundary + 2)
         const { event, data } = parseFrame(frame)
-        if (data && KNOWN_EVENTS.includes(event as AgentSseEvent)) {
+        if (data) {
           let payload: Record<string, unknown> | undefined
           try {
             payload = JSON.parse(data) as Record<string, unknown>
@@ -87,8 +90,12 @@ export const streamSse = async (
             payload = undefined
           }
           if (payload) {
+            //未知事件不再静默丢弃：告警后仍投递给调用方，避免引擎新增事件类型时被吞掉
+            if (!KNOWN_EVENTS.includes(event)) {
+              console.warn('[sse] unknown event:', event)
+            }
             //onEvent 抛出的业务错误（如 error 事件）要向上传播给调用方处理
-            onEvent(event as AgentSseEvent, payload)
+            onEvent(event as E, payload)
           }
         }
         boundary = buffer.indexOf('\n\n')

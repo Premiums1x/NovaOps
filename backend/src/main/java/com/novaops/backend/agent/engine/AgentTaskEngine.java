@@ -9,6 +9,7 @@ import com.novaops.backend.agent.engine.model.EngineState;
 import com.novaops.backend.agent.engine.model.PlannedStep;
 import com.novaops.backend.agent.engine.model.StepOutcome;
 import com.novaops.backend.agent.engine.model.TaskPlan;
+import com.novaops.backend.common.util.StringUtils;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.springframework.stereotype.Component;
@@ -51,7 +53,7 @@ public class AgentTaskEngine {
       ToolRegistry registry,
       TaskModelGateway gateway,
       EngineConfig config,
-      @org.springframework.beans.factory.annotation.Qualifier("agentTaskExecutor")
+      @org.springframework.beans.factory.annotation.Qualifier("agentToolExecutor")
       Executor toolRunner,
       ObjectMapper objectMapper) {
     this.registry = registry;
@@ -77,7 +79,7 @@ public class AgentTaskEngine {
         emit(listener, "step", outcome.seq(), Map.of(
             "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
             "status", outcome.status(), "observation", outcome.observation(),
-            "args", safeArgs(denied.args())));
+            "args", safeArgs(denied.args()), "revision", state.revisions()));
         emit(listener, "audit", outcome.seq(),
             auditPayload(denied, outcome, false, false));
         ReplanOutcome replan = tryReplan(state, listener, "用户拒绝了一次写操作");
@@ -159,7 +161,7 @@ public class AgentTaskEngine {
         emit(listener, "step", outcome.seq(), Map.of(
             "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
             "status", outcome.status(), "observation", outcome.observation(),
-            "args", safeArgs(step.args())));
+            "args", safeArgs(step.args()), "revision", state.revisions()));
         emit(listener, "audit", outcome.seq(),
             auditPayload(step, outcome, true, confirmed));
 
@@ -228,7 +230,7 @@ public class AgentTaskEngine {
         emit(listener, "step", outcome.seq(), Map.of(
             "seq", outcome.seq(), "tool", outcome.tool(), "title", outcome.title(),
             "status", outcome.status(), "observation", observation,
-            "args", safeArgs(step.args())));
+            "args", safeArgs(step.args()), "revision", state.revisions()));
         emit(listener, "audit", outcome.seq(),
             auditPayload(step, outcome, executed, false));
     ReplanOutcome replan = tryReplan(state, listener, observation);
@@ -259,7 +261,12 @@ public class AgentTaskEngine {
       return call.call();
     }
     FutureTask<ToolResult> future = new FutureTask<>(call);
-    toolRunner.execute(future);
+    try {
+      toolRunner.execute(future);
+    } catch (RejectedExecutionException ex) {
+      // 工具池拒绝：降级为该步失败并走重规划，不放大成整个任务失败
+      return ToolResult.failed("工具执行队列已满，请稍后重试");
+    }
     try {
       return future.get(config.stepTimeout().toMillis(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException ex) {
@@ -324,7 +331,8 @@ public class AgentTaskEngine {
     if (text == null || text.length() <= config.observationMaxChars()) {
       return text == null ? "" : text;
     }
-    return text.substring(0, config.observationMaxChars()) + TRUNCATION_SUFFIX;
+    // 按码点截断，避免 emoji 等代理对被切成乱码
+    return StringUtils.truncateByCodePoints(text, config.observationMaxChars()) + TRUNCATION_SUFFIX;
   }
 
   private void emit(EngineListener listener, String type, int seq, Map<String, Object> payload) {

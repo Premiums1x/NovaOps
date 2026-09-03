@@ -17,6 +17,15 @@ vi.mock('@/api/agentTask', () => ({
   }),
   cancelTaskApi: vi.fn(),
   getTaskApi: vi.fn(),
+  getTaskAuditsApi: vi.fn().mockResolvedValue([]),
+  getTaskStatsApi: vi.fn().mockResolvedValue({
+    total: 4,
+    byStatus: { DONE: 2, FAILED: 1, RUNNING: 1 },
+    successRate: 0.5,
+    avgSteps: 2.5,
+    writeOperations: 3,
+    confirmedOperations: 2,
+  }),
   listTasksApi: vi.fn().mockResolvedValue([]),
   streamTaskEvents: vi.fn().mockImplementation(async (_id: string, onEvent: EventHandler) => {
     for (const [event, data] of streamScripts.shift() ?? []) {
@@ -34,12 +43,12 @@ vi.mock('md-editor-v3', () => ({
 }))
 
 const stubs = {
-  'a-card': { template: '<div><slot name="title" /><slot /></div>' },
+  'a-card': { props: ['title'], template: '<div><slot name="title" />{{ title }}<slot /></div>' },
   'a-textarea': {
     props: ['value'],
     template: '<textarea :value="value" @input="$emit(\'update:value\', $event.target.value)" />',
   },
-  'a-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' },
+  'a-button': { template: '<button @click="$emit(\'click\', $event)"><slot /></button>' },
   'a-steps': { template: '<div class="steps-stub"><slot /></div>' },
   'a-step': {
     props: ['title', 'description'],
@@ -55,7 +64,11 @@ const stubs = {
     props: ['open'],
     template: '<div class="modal-stub" v-if="open"><slot /><button class="modal-ok" @click="$emit(\'ok\')">确认</button><button class="modal-cancel" @click="$emit(\'cancel\')">拒绝</button></div>',
   },
-  'a-list': { template: '<div><slot /></div>' },
+  'a-list': {
+    props: ['dataSource'],
+    template:
+      '<div><template v-for="item in dataSource || []" :key="item.id"><slot name="renderItem" :item="item" /></template><slot /></div>',
+  },
   'a-list-item': { template: '<div><slot /></div>' },
   'a-empty': { template: '<div class="empty-stub" />' },
 }
@@ -73,11 +86,12 @@ describe('AgentConsole', () => {
     vi.clearAllMocks()
   })
 
-  it('runs a task and renders plan, steps and result', async () => {
+  it('runs a task and renders plan, steps, durations and result', async () => {
     streamScripts.push([
-      ['plan', { steps: [{ seq: 1, tool: 'ticket.search', title: '检索工单', why: '找到目标工单' }] }],
-      ['step', { seq: 1, tool: 'ticket.search', title: '检索工单', status: 'DONE', observation: '{"total":1}' }],
-      ['result', { summary: '任务完成报告' }],
+      ['plan', { steps: [{ seq: 1, tool: 'ticket.search', title: '检索工单', why: '找到目标工单' }], at: 500 }],
+      ['step', { seq: 1, tool: 'ticket.search', title: '检索工单', status: 'DONE', observation: '{"total":1}', at: 1000 }],
+      ['step', { seq: 2, tool: 'kb.search', title: '检索知识库', status: 'DONE', observation: '{"hits":2}', at: 2500 }],
+      ['result', { summary: '任务完成报告', at: 3000 }],
     ])
     const wrapper = await mountConsole()
 
@@ -91,6 +105,20 @@ describe('AgentConsole', () => {
     expect(wrapper.text()).toContain('找到目标工单')
     expect(wrapper.text()).toContain('任务完成报告')
     expect(wrapper.get('.md-preview-component').text()).toContain('任务完成报告')
+    // 每步相对耗时（相邻事件 at 差）与报告卡总耗时（plan→result）
+    expect(wrapper.text()).toContain('1.5s')
+    expect(wrapper.text()).toContain('总耗时 2.5s')
+  })
+
+  it('renders task statistics cards on mount', async () => {
+    const wrapper = await mountConsole()
+
+    expect(wrapper.text()).toContain('总任务数')
+    expect(wrapper.text()).toContain('成功率')
+    expect(wrapper.text()).toContain('写操作确认率')
+    expect(wrapper.text()).toContain('4')
+    expect(wrapper.text()).toContain('50%')
+    expect(wrapper.text()).toContain('67%')
   })
 
   it('asks for confirmation on confirm_required and sends approval', async () => {
@@ -129,5 +157,40 @@ describe('AgentConsole', () => {
     await flushPromises()
 
     expect(wrapper.get('.alert-stub').text()).toContain('已达最大步数上限')
+  })
+
+  it('restores confirm dialog from pending task detail and re-pulls detail after approval', async () => {
+    const task = { id: 'task-h1', goal: '转派工单', status: 'AWAITING_CONFIRM', createdAt: '', updatedAt: '' }
+    const { getTaskApi, listTasksApi } = await import('@/api/agentTask')
+    vi.mocked(listTasksApi).mockResolvedValue([task])
+    vi.mocked(getTaskApi)
+      .mockResolvedValueOnce({
+        task,
+        steps: [],
+        pendingConfirmation: {
+          confirmationId: 'confirm-789',
+          tool: 'ticket.assign',
+          title: '指派工单',
+          preview: { ticketId: 'A-1', assignee: 'Jerry' },
+        },
+      })
+      // 确认成功后重拉的详情：挂起已消失
+      .mockResolvedValueOnce({ task: { ...task, status: 'RUNNING' }, steps: [] })
+
+    const wrapper = await mountConsole()
+    await wrapper.get('.recent-item').trigger('click')
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(wrapper.get('.modal-stub').text()).toContain('指派工单')
+    expect(wrapper.get('.modal-stub').text()).toContain('Jerry')
+
+    await wrapper.get('.modal-ok').trigger('click')
+    await flushPromises()
+
+    expect(confirmCalls).toEqual([{ id: 'task-h1', confirmationId: 'confirm-789', approved: true }])
+    expect(getTaskApi).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('.modal-stub').exists()).toBe(false)
   })
 })

@@ -366,6 +366,8 @@ insert into sys_menu (id, title, name, path, component, icon, permission_code, k
   ('staff-ticket-list', '工单列表', 'TicketList', '/ticket/list', 'TicketListView', null, 'ticket:view', 1, 'staff-ticket', 21, 'staff'),
   ('full-agent-console', '智能体工作台', 'AgentConsole', '/agent/console', 'AgentConsoleView', 'robot', 'agent:task', 1, null, 45, 'full'),
   ('staff-agent-console', '智能体工作台', 'AgentConsole', '/agent/console', 'AgentConsoleView', 'robot', 'agent:task', 1, null, 45, 'staff'),
+  ('full-agent-tasks', '任务中心', 'AgentTasks', '/agent/tasks', 'AgentTasksView', 'robot', 'agent:task', 1, null, 46, 'full'),
+  ('staff-agent-tasks', '任务中心', 'AgentTasks', '/agent/tasks', 'AgentTasksView', 'robot', 'agent:task', 1, null, 46, 'staff'),
   ('guest-dashboard', 'Dashboard', 'Dashboard', '/dashboard', 'DashboardView', 'dashboard', 'dashboard:view', 1, null, 10, 'guest');
 
 insert into biz_ticket (id, title, description, status, priority, assignee_id, creator_id, due_date, created_at, updated_at) values

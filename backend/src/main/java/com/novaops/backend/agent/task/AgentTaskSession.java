@@ -58,6 +58,11 @@ public class AgentTaskSession {
     }
   }
 
+  /** 仅供同包测试读取已广播的事件序列。 */
+  synchronized List<EngineEvent> historySnapshot() {
+    return List.copyOf(history);
+  }
+
   /** 新连接：回放全部历史事件；任务已终态则发送后立即完成。 */
   public synchronized SseEmitter attach() {
     SseEmitter emitter = new SseEmitter(0L);
@@ -74,7 +79,10 @@ public class AgentTaskSession {
 
   private void send(SseEmitter emitter, EngineEvent event) {
     try {
-      emitter.send(SseEmitter.event().name(event.type()).data(event.payload()));
+      // 引擎时间戳并入 SSE 载荷，前端据此计算每步相对耗时
+      java.util.Map<String, Object> data = new java.util.LinkedHashMap<>(event.payload());
+      data.put("at", event.at());
+      emitter.send(SseEmitter.event().name(event.type()).data(data));
       if (terminal && isTerminalEvent(event)) {
         emitter.complete();
       }

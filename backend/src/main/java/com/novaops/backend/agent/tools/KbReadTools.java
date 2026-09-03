@@ -8,6 +8,7 @@ import com.novaops.backend.agent.engine.ToolSchema;
 import com.novaops.backend.kb.dto.KnowledgeBaseMetadataDocument;
 import com.novaops.backend.kb.dto.KnowledgeBaseMetadataSnapshot;
 import com.novaops.backend.kb.dto.RetrievalChunk;
+import com.novaops.backend.common.util.StringUtils;
 import com.novaops.backend.kb.dto.RetrievalResult;
 import com.novaops.backend.kb.service.KbMetadataService;
 import com.novaops.backend.kb.service.KbRetrievalService;
@@ -135,6 +136,9 @@ public final class KbReadTools {
     if (text == null) {
       return "";
     }
-    return text.length() <= CHUNK_TEXT_LIMIT ? text : text.substring(0, CHUNK_TEXT_LIMIT) + "…(片段截断)";
+    // 按码点截断，避免 emoji 等代理对被切成乱码
+    return text.length() <= CHUNK_TEXT_LIMIT
+        ? text
+        : StringUtils.truncateByCodePoints(text, CHUNK_TEXT_LIMIT) + "…(片段截断)";
   }
 }

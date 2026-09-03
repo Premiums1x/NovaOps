@@ -9,6 +9,8 @@ import com.novaops.backend.agent.engine.ToolResult;
 import com.novaops.backend.agent.task.mapper.AgentAuditMapper;
 import com.novaops.backend.agent.task.model.AgentAuditRecord;
 import com.novaops.backend.common.util.IdGenerator;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,7 +64,9 @@ public class McpServerController {
     if (token == null || token.isBlank()) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
     }
-    if (authorization == null || !authorization.equals("Bearer " + token)) {
+    if (authorization == null || !MessageDigest.isEqual(
+        authorization.getBytes(StandardCharsets.UTF_8),
+        ("Bearer " + token).getBytes(StandardCharsets.UTF_8))) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
     if (body == null || body.get("method") == null) {
